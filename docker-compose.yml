@@ -1,0 +1,45 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+      - ./generated:/generated
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      GENERATED_DIR: /generated
+      SMTP_HOST: ""
+      SMTP_PORT: "587"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build: ./backend
+    command: celery -A tasks.celery_app worker --loglevel=info -c 4
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+      - ./generated:/generated
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      GENERATED_DIR: /generated
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_API_URL: http://localhost:8000
