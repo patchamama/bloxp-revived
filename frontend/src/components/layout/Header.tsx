@@ -28,6 +28,9 @@ export function Header() {
           <NavLink to="/faq" className={linkClass}>
             FAQ
           </NavLink>
+          <NavLink to="/contact" className={linkClass}>
+            Contact
+          </NavLink>
         </nav>
       </div>
     </header>

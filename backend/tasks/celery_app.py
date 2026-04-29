@@ -5,7 +5,7 @@ celery_app = Celery(
     "bloxp",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["tasks.process_blog"],
+    include=["tasks.process_blog", "tasks.cleanup"],
 )
 
 celery_app.conf.update(
@@ -15,4 +15,10 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
+    beat_schedule={
+        "cleanup-expired-jobs": {
+            "task": "tasks.cleanup.cleanup_expired_jobs",
+            "schedule": 3600,  # every hour
+        },
+    },
 )

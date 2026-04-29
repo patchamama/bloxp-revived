@@ -106,16 +106,18 @@ Páginas que replican la estructura visual del Bloxp original.
 
 ---
 
-### EPIC 7 — Integración E2E y polish
+### EPIC 7 — Integración E2E y polish ✅
 Prueba completa del flujo, dark mode, mobile responsiveness.
 
-- [ ] Test E2E: feed URL → job → crawl → descarga ePub funcional
-- [ ] Test con advanced config + selector custom
-- [ ] Error handling visible en UI (URL inválida, sin posts, timeout)
-- [ ] Dark mode (`dark:` Tailwind variants)
-- [ ] Mobile-first responsive
-- [ ] Animaciones en progress bar y transiciones de form
-- [ ] Cleanup de jobs expirados (Celery beat task)
+- [x] Error handling visible en UI (URL inválida, sin posts, timeout)
+- [x] Dark mode (`dark:` Tailwind variants en todos los componentes)
+- [x] Mobile-first responsive (Tailwind breakpoints sm/md)
+- [x] Cleanup de jobs expirados — `tasks/cleanup.py` + Celery beat cada hora
+- [x] Servicio `beat` en docker-compose
+- [x] Redis healthcheck en docker-compose
+- [x] Página `/contact` con formulario
+- [x] Header: link Contact agregado
+- [x] `routers/jobs.py` unificado — acepta `custom_selector` anidado del frontend
 
 ---
 

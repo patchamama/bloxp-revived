@@ -7,6 +7,7 @@ import { AdvancedConfigPage } from '@/pages/AdvancedConfigPage'
 import { WorkingPage } from '@/pages/WorkingPage'
 import { AboutPage } from '@/pages/AboutPage'
 import { FaqPage } from '@/pages/FaqPage'
+import { ContactPage } from '@/pages/ContactPage'
 
 const queryClient = new QueryClient()
 
@@ -23,6 +24,7 @@ export default function App() {
               <Route path="/working/:jobId" element={<WorkingPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/faq" element={<FaqPage />} />
+              <Route path="/contact" element={<ContactPage />} />
             </Routes>
           </div>
           <Footer />

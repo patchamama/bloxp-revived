@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -12,32 +12,27 @@ router = APIRouter()
 class JobCreateRequest(BaseModel):
     type: Literal["basic", "advanced"]
     # basic
-    feed_url: Optional[str] = None
+    feed_url: str = ""
     # advanced
-    starting_url: Optional[str] = None
-    starting_title: Optional[str] = None
-    site_url: Optional[str] = None
-    site_title: Optional[str] = None
+    starting_url: str = ""
+    starting_title: str = ""
+    site_url: str = ""
+    site_title: str = ""
     site_description: str = ""
     # shared
     links_to_footnotes: bool = False
     add_toc: bool = True
     max_posts: int = 250
-    # custom selector (advanced)
-    custom_search_opt: bool = False
-    tag_name: str = ""
-    attr_name: str = ""
-    attr_value: str = ""
-    pre_string: str = ""
-    parent_tag: bool = False
+    # custom selector (advanced) — accepts nested object from frontend
+    custom_selector: Optional[Any] = None
 
 
-@router.post("/jobs")
+@router.post("/jobs", status_code=202)
 def create_job_endpoint(req: JobCreateRequest) -> dict:
     state = create_job()
 
     if req.type == "basic":
-        if not req.feed_url:
+        if not req.feed_url.strip():
             raise HTTPException(status_code=422, detail="feed_url is required for basic jobs")
         payload = {
             "feed_url": req.feed_url,
@@ -46,24 +41,14 @@ def create_job_endpoint(req: JobCreateRequest) -> dict:
         }
         process_basic.delay(state.job_id, payload)
     else:
-        missing = [f for f, v in [
+        for field, val in [
             ("starting_url", req.starting_url),
-            ("starting_title", req.starting_title),
             ("site_url", req.site_url),
             ("site_title", req.site_title),
-        ] if not v]
-        if missing:
-            raise HTTPException(status_code=422, detail=f"Required fields missing: {', '.join(missing)}")
+        ]:
+            if not str(val).strip():
+                raise HTTPException(status_code=422, detail=f"{field} is required for advanced jobs")
 
-        custom_selector = None
-        if req.custom_search_opt:
-            custom_selector = {
-                "tag_name": req.tag_name,
-                "attr_name": req.attr_name,
-                "attr_value": req.attr_value,
-                "pre_string": req.pre_string,
-                "parent_tag": req.parent_tag,
-            }
         payload = {
             "starting_url": req.starting_url,
             "starting_title": req.starting_title,
@@ -73,7 +58,7 @@ def create_job_endpoint(req: JobCreateRequest) -> dict:
             "links_to_footnotes": req.links_to_footnotes,
             "add_toc": req.add_toc,
             "max_posts": req.max_posts,
-            "custom_selector": custom_selector,
+            "custom_selector": req.custom_selector,
         }
         process_advanced.delay(state.job_id, payload)
 

@@ -3,13 +3,19 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   backend:
     build: ./backend
     ports:
       - "8000:8000"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     volumes:
       - ./backend:/app
       - ./generated:/generated
@@ -26,10 +32,23 @@ services:
     build: ./backend
     command: celery -A tasks.celery_app worker --loglevel=info -c 4
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     volumes:
       - ./backend:/app
       - ./generated:/generated
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      GENERATED_DIR: /generated
+
+  beat:
+    build: ./backend
+    command: celery -A tasks.celery_app beat --loglevel=info
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
     environment:
       REDIS_URL: redis://redis:6379/0
       GENERATED_DIR: /generated
@@ -42,4 +61,4 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      VITE_API_URL: http://localhost:8000
+      VITE_API_URL: ""
