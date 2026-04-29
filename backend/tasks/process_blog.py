@@ -62,7 +62,7 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
         feed = parse_feed(req.feed_url)
         if not feed:
             state.status = JobStatus.error
-            state.error_message = "Could not parse feed. Make sure the URL is a valid RSS/Atom feed."
+            state.error_message = "Could not find a valid RSS/Atom feed. Try pasting the feed URL directly (e.g. https://example.com/feed)."
             _save_state(state)
             return
 
