@@ -1,8 +1,10 @@
 import asyncio
 import json
+import re
 import time
 import uuid
 from typing import Any
+from urllib.parse import urlparse, parse_qs, urlunparse, urlencode
 
 import redis as redis_lib
 
@@ -46,6 +48,39 @@ def create_job() -> JobState:
     return state
 
 
+def _extract_max_posts(url: str) -> tuple[str, int]:
+    """Strip ?noMaxPosts from URL and return (clean_url, limit).
+    ?noMaxPosts=true  → 500
+    ?noMaxPosts=N     → N
+    (absent)          → 250
+    """
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query, keep_blank_values=True)
+    raw = qs.pop("noMaxPosts", None)
+    if raw is not None:
+        val = raw[0]
+        if val.lower() == "true" or val == "":
+            limit = 500
+        else:
+            try:
+                limit = max(1, int(val))
+            except ValueError:
+                limit = 500
+    else:
+        limit = 250
+    clean_query = urlencode({k: v[0] for k, v in qs.items()})
+    clean_url = urlunparse(parsed._replace(query=clean_query))
+    return clean_url, limit
+
+
+def _slugify(title: str) -> str:
+    slug = title.strip().lower()
+    slug = re.sub(r"[^\w\s-]", "", slug)
+    slug = re.sub(r"[\s_]+", "-", slug)
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    return slug or "ebook"
+
+
 @celery_app.task(bind=True)
 def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
     req = BasicJobRequest(**payload)
@@ -59,7 +94,8 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
         state.progress = 5
         _save_state(state)
 
-        feed = parse_feed(req.feed_url, max_posts=250)
+        clean_url, max_posts = _extract_max_posts(req.feed_url)
+        feed = parse_feed(clean_url, max_posts=max_posts)
         if not feed:
             state.status = JobStatus.error
             state.error_message = "Could not find a valid RSS/Atom feed. Try pasting the feed URL directly (e.g. https://example.com/feed)."
@@ -79,7 +115,7 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
             _save_state(state)
 
         posts = asyncio.run(
-            crawl_from_feed(post_urls, max_posts=250, on_progress=on_progress)
+            crawl_from_feed(post_urls, max_posts=max_posts, on_progress=on_progress)
         )
 
         _generate_ebooks(state, posts, feed.title, feed.description, req.add_toc, req.links_to_footnotes)
@@ -150,6 +186,7 @@ def _generate_ebooks(
 
     state.status = JobStatus.generating
     state.progress = 75
+    state.ebook_title = _slugify(title)
     _save_state(state)
 
     ep = epub_path(state.job_id)

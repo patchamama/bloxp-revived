@@ -22,6 +22,7 @@ class JobState(BaseModel):
     epub_path: Optional[str] = None
     mobi_path: Optional[str] = None
     pdf_path: Optional[str] = None
+    ebook_title: Optional[str] = None
     created_at: float = 0.0
     expires_at: float = 0.0
 

@@ -38,8 +38,9 @@ def download(job_id: str, format: str) -> FileResponse:
     if not file_path.exists():
         raise HTTPException(status_code=503, detail=f"{format.upper()} file not found on disk")
 
+    slug = state.ebook_title or "ebook"
     return FileResponse(
         path=str(file_path),
         media_type=_CONTENT_TYPES[format],
-        filename=f"output.{format}",
+        filename=f"{slug}.{format}",
     )
