@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { submitBasicJob, submitAdvancedJob } from '@/api/client'
 import { useEbookStore } from '@/stores/ebookStore'
+import { addJobToHistory } from '@/hooks/useJobHistory'
 
 export function useSubmitBasicJob() {
   const navigate = useNavigate()
@@ -17,6 +18,7 @@ export function useSubmitBasicJob() {
       }),
     onSuccess: ({ job_id }) => {
       setActiveJobId(job_id)
+      addJobToHistory(job_id, feedUrl || 'Untitled')
       navigate(`/working/${job_id}`)
     },
   })
@@ -46,6 +48,7 @@ export function useSubmitAdvancedJob() {
       }),
     onSuccess: ({ job_id }) => {
       store.setActiveJobId(job_id)
+      addJobToHistory(job_id, store.siteTitle || store.startingUrl || 'Untitled')
       navigate(`/working/${job_id}`)
     },
   })

@@ -10,4 +10,7 @@ export interface JobStatusResponse {
   has_epub: boolean
   has_mobi: boolean
   has_pdf: boolean
+  ebook_title?: string
+  images_found: number
+  images_embedded: number
 }

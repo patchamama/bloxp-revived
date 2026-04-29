@@ -84,4 +84,7 @@ def get_job_status(job_id: str) -> JobStatusResponse:
         has_epub=bool(state.epub_path),
         has_mobi=bool(state.mobi_path),
         has_pdf=bool(state.pdf_path),
+        ebook_title=state.ebook_title,
+        images_found=state.images_found,
+        images_embedded=state.images_embedded,
     )

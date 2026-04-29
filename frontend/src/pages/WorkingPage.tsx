@@ -1,9 +1,11 @@
+import { useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useJobStatus } from '@/hooks/useJobStatus'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Spinner } from '@/components/ui/Spinner'
 import { ErrorPanel } from '@/components/ui/ErrorPanel'
 import { Button } from '@/components/ui/Button'
+import { addJobToHistory } from '@/hooks/useJobHistory'
 import type { JobStatus } from '@/types/job'
 
 const STATUS_MESSAGES: Record<JobStatus, string> = {
@@ -18,6 +20,12 @@ const STATUS_MESSAGES: Record<JobStatus, string> = {
 export function WorkingPage() {
   const { jobId } = useParams<{ jobId: string }>()
   const { data, isLoading, isError } = useJobStatus(jobId ?? null)
+
+  useEffect(() => {
+    if (data?.status === 'done' && jobId && data.ebook_title) {
+      addJobToHistory(jobId, data.ebook_title)
+    }
+  }, [data?.status, data?.ebook_title, jobId])
 
   if (isLoading || !data) {
     return (
@@ -51,6 +59,11 @@ export function WorkingPage() {
         {data.status === 'crawling' && data.posts_found > 0 && (
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {data.posts_crawled} / {data.posts_found} posts crawled
+          </p>
+        )}
+        {data.status === 'generating' && data.images_found > 0 && (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Embedding images: {data.images_embedded} / {data.images_found}
           </p>
         )}
       </div>

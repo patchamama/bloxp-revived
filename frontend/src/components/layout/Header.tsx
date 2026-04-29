@@ -22,6 +22,9 @@ export function Header() {
           <NavLink to="/advanced" className={linkClass}>
             Advanced
           </NavLink>
+          <NavLink to="/history" className={linkClass}>
+            My ebooks
+          </NavLink>
           <NavLink to="/about" className={linkClass}>
             About
           </NavLink>

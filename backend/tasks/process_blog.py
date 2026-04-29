@@ -1,10 +1,11 @@
 import asyncio
-import json
 import re
 import time
 import uuid
 from typing import Any
 from urllib.parse import urlparse, parse_qs, urlunparse, urlencode
+
+from bs4 import BeautifulSoup
 
 import redis as redis_lib
 
@@ -189,10 +190,28 @@ def _generate_ebooks(
     state.status = JobStatus.generating
     state.progress = 75
     state.ebook_title = _slugify(title)
+
+    if include_images:
+        # Count total images across all posts so frontend can show progress
+        _SKIP = ("icon18_email", "icon18_edit", "blank.gif", "favicon", "s16/", "s24/", "s28/", "s32/")
+        total_imgs = 0
+        for post in posts:
+            soup = BeautifulSoup(post.content or "", "lxml")
+            for img in soup.find_all("img"):
+                src = img.get("src", "")
+                if src and not src.startswith("data:") and not any(f in src for f in _SKIP):
+                    total_imgs += 1
+        state.images_found = total_imgs
+
     _save_state(state)
 
+    def on_image(embedded: int) -> None:
+        state.images_embedded = embedded
+        _save_state(state)
+
     ep = epub_path(state.job_id)
-    build_epub(posts, title, description, ep, add_toc, links_to_footnotes, include_images)
+    build_epub(posts, title, description, ep, add_toc, links_to_footnotes, include_images,
+               on_image=on_image if include_images else None)
     state.epub_path = str(ep)
     state.progress = 85
     _save_state(state)
