@@ -60,49 +60,49 @@ Pipeline completo: feed → crawl → extracción → generación de ebooks.
 
 ---
 
-### EPIC 4 — Backend: API y task pipeline ✅
+### EPIC 4 — Backend: API y task pipeline ✅✅
 Task Celery completo, endpoints FastAPI, rutas de descarga.
 
 - [x] `tasks/process_blog.py` — tasks `process_basic` y `process_advanced`
-- [ ] `main.py` — FastAPI app, CORS, router registration
-- [ ] `routers/jobs.py` — `POST /api/jobs`, `GET /api/jobs/{id}`
-- [ ] `routers/download.py` — `GET /api/jobs/{id}/download/{format}`
-- [ ] `routers/contact.py` — `POST /api/contact`
+- [x] `main.py` — FastAPI app, CORS, router registration
+- [x] `routers/jobs.py` — `POST /api/jobs`, `GET /api/jobs/{id}`
+- [x] `routers/download.py` — `GET /api/jobs/{id}/download/{format}`
+- [x] `routers/contact.py` — `POST /api/contact`
 
 ---
 
-### EPIC 5 — Frontend: scaffold y componentes UI
+### EPIC 5 — Frontend: scaffold y componentes UI ✅
 Vite + React 19 + TypeScript + Tailwind. Componentes base reutilizables.
 
-- [ ] Scaffold Vite + dependencias (React Router, React Query, Zustand)
-- [ ] `components/layout/Header.tsx` — nav: Home | About | FAQ | Contact
-- [ ] `components/layout/Footer.tsx`
-- [ ] `components/ui/Button.tsx`
-- [ ] `components/ui/Input.tsx`
-- [ ] `components/ui/Checkbox.tsx`
-- [ ] `components/ui/Fieldset.tsx`
-- [ ] `components/ui/ErrorPanel.tsx`
-- [ ] `components/ui/ProgressBar.tsx`
-- [ ] `components/ui/Spinner.tsx`
-- [ ] `components/forms/FormField.tsx`
+- [x] Scaffold Vite + dependencias (React Router, React Query, Zustand)
+- [x] `components/layout/Header.tsx` — nav: Home | Advanced | About | FAQ
+- [x] `components/layout/Footer.tsx`
+- [x] `components/ui/Button.tsx`
+- [x] `components/ui/Input.tsx`
+- [x] `components/ui/Checkbox.tsx`
+- [x] `components/ui/Fieldset.tsx`
+- [x] `components/ui/ErrorPanel.tsx`
+- [x] `components/ui/ProgressBar.tsx`
+- [x] `components/ui/Spinner.tsx`
+- [x] `components/forms/FormField.tsx`
 
 ---
 
-### EPIC 6 — Frontend: páginas principales
+### EPIC 6 — Frontend: páginas principales ✅
 Páginas que replican la estructura visual del Bloxp original.
 
-- [ ] `stores/ebookStore.ts` — Zustand store (form fields + activeJobId)
-- [ ] `api/client.ts` — fetch wrappers tipados
-- [ ] `hooks/useJobStatus.ts` — React Query polling (2s, auto-stop)
-- [ ] `hooks/useSubmitJob.ts` — mutation hook
-- [ ] `pages/HomePage.tsx` — hero + BasicEbookForm + sección features + contacto
-- [ ] `components/forms/BasicEbookForm.tsx`
-- [ ] `pages/AdvancedConfigPage.tsx`
-- [ ] `components/forms/AdvancedEbookForm.tsx`
-- [ ] `components/forms/ExportSettingsSection.tsx` — toggle con customSearchOpt
-- [ ] `pages/WorkingPage.tsx` — progress bar, polling, botones de descarga
-- [ ] `pages/AboutPage.tsx`
-- [ ] `pages/FaqPage.tsx`
+- [x] `stores/ebookStore.ts` — Zustand store (form fields + activeJobId)
+- [x] `api/client.ts` — fetch wrappers tipados
+- [x] `hooks/useJobStatus.ts` — React Query polling (2s, auto-stop)
+- [x] `hooks/useSubmitJob.ts` — mutation hook
+- [x] `pages/HomePage.tsx` — hero + BasicEbookForm + sección features + contacto
+- [x] `components/forms/BasicEbookForm.tsx`
+- [x] `pages/AdvancedConfigPage.tsx`
+- [x] `components/forms/AdvancedEbookForm.tsx`
+- [x] `components/forms/ExportSettingsSection.tsx` — toggle con customSearchOpt
+- [x] `pages/WorkingPage.tsx` — progress bar, polling, botones de descarga
+- [x] `pages/AboutPage.tsx`
+- [x] `pages/FaqPage.tsx`
 
 ---
 
