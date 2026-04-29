@@ -15,7 +15,7 @@ def convert_epub_to_mobi(epub_path: Path, mobi_path: Path) -> Optional[str]:
         if result.returncode != 0:
             return result.stderr or "ebook-convert failed"
         return None
-    except FileNotFoundError:
-        return "Calibre not installed — Mobi conversion unavailable"
+    except (FileNotFoundError, PermissionError, OSError):
+        return "Calibre not installed or not executable — Mobi conversion unavailable"
     except subprocess.TimeoutExpired:
         return "Mobi conversion timed out"
