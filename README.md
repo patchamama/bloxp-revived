@@ -1,8 +1,23 @@
+<div align="center">
+
 # Bloxp Revived
 
-> **Convert any blog into a downloadable ebook — ePub, Mobi, or PDF.**
+**Convert any blog into a downloadable ebook — ePub, Mobi, or PDF.**
 
-A modern open-source recreation of the original [Bloxp](https://web.archive.org/web/20200812034023/http://www.bloxp.com/) — a tool that has since disappeared from the internet. This project brings it back with a contemporary stack while preserving its original purpose: give any blog a second life as a readable, portable ebook.
+A modern open-source recreation of the original [Bloxp](https://web.archive.org/web/20200812034023/http://www.bloxp.com/) — a tool that disappeared from the internet around 2020. This project brings it back with a contemporary stack while preserving its original purpose: give any blog a second life as a readable, portable ebook.
+
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io)
+[![Celery](https://img.shields.io/badge/Celery-5-37814A?style=flat-square&logo=celery&logoColor=white)](https://docs.celeryq.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+
+📖 **[Leer en español](README.es.md)**
+
+</div>
 
 ---
 
@@ -17,19 +32,59 @@ This reimplementation has been on a to-do list for a long time. What finally mad
 > *Credits and gratitude to the original Bloxp project and its author:*
 > [bloxp.com/about](https://web.archive.org/web/20200812034023/http://www.bloxp.com/about.php)
 
-📖 **[Leer en español](README.es.md)**
-
 ---
 
 ## Features
 
-- **Feed-based export** — paste an RSS/Atom URL and export the full archive (up to 250 posts)
-- **Advanced mode** — for blogs without feeds: provide the first post URL and a CSS selector for "previous post" navigation
-- **Three output formats** — ePub (universal), Mobi (Kindle via Calibre), PDF (via WeasyPrint)
-- **Table of contents** — optional, auto-generated from post titles
-- **Links to footnotes** — optional conversion of inline links to numbered footnotes
-- **Async processing** — jobs run in the background via Celery; progress tracked in real time
-- **Auto cleanup** — generated files expire after 24 hours
+| Feature | Description |
+|---------|-------------|
+| **Feed-based export** | Paste an RSS/Atom URL and export the full archive (up to 250 posts) |
+| **Advanced mode** | For blogs without feeds: provide the first post URL + a CSS selector for "previous post" navigation |
+| **Three output formats** | ePub (universal), Mobi (Kindle via Calibre), PDF (via WeasyPrint) |
+| **Table of contents** | Optional, auto-generated from post titles |
+| **Links to footnotes** | Optional conversion of inline links to numbered footnotes |
+| **Async processing** | Jobs run in the background via Celery; progress tracked in real time |
+| **Auto cleanup** | Generated files expire after 24 hours |
+
+---
+
+## Tech Stack
+
+### Frontend
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| [React](https://react.dev) | 19 | UI framework |
+| [TypeScript](https://www.typescriptlang.org) | 5.x | Type safety |
+| [Vite](https://vitejs.dev) | 6.x | Build tool & dev server |
+| [Tailwind CSS](https://tailwindcss.com) | v4 | Utility-first styling |
+| [React Router](https://reactrouter.com) | v7 | Client-side routing |
+| [Zustand](https://zustand-demo.pmnd.rs) | 5.x | Form state management |
+| [TanStack Query](https://tanstack.com/query) | v5 | Server state & polling |
+
+### Backend
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| [Python](https://python.org) | 3.12 | Runtime |
+| [FastAPI](https://fastapi.tiangolo.com) | 0.115 | REST API framework |
+| [Celery](https://docs.celeryq.dev) | 5.x | Background task queue |
+| [Redis](https://redis.io) | 7 | Broker + job state store |
+| [feedparser](https://feedparser.readthedocs.io) | 6.x | RSS/Atom parsing |
+| [httpx](https://www.python-httpx.org) | 0.27 | Async HTTP crawling |
+| [BeautifulSoup4](https://www.crummy.com/software/BeautifulSoup/) | 4.x | HTML parsing |
+| [trafilatura](https://trafilatura.readthedocs.io) | 1.x | Content extraction |
+| [python-readability](https://github.com/buriy/python-readability) | — | Content extraction fallback |
+| [ebooklib](https://github.com/aerkalov/ebooklib) | 0.18 | ePub generation |
+| [Calibre CLI](https://calibre-ebook.com) | — | Mobi conversion (`ebook-convert`) |
+| [WeasyPrint](https://weasyprint.org) | 62.x | PDF generation |
+
+### Infrastructure
+
+| Technology | Purpose |
+|------------|---------|
+| [Docker Compose](https://docs.docker.com/compose/) | Local development environment |
+| [Uvicorn](https://www.uvicorn.org) | ASGI server |
 
 ---
 
@@ -82,23 +137,6 @@ graph TD
     Working -->|"download"| API
     Beat --> Redis
 ```
-
-### Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 19 + TypeScript + Vite + Tailwind CSS v4 |
-| State | Zustand (forms) + TanStack Query (server state) |
-| Routing | React Router v7 |
-| Backend | Python 3.12 + FastAPI |
-| Task queue | Celery 5 + Redis 7 |
-| Feed parsing | feedparser |
-| Web crawling | httpx (async) + BeautifulSoup4 |
-| Content extraction | trafilatura + python-readability (fallback) |
-| ePub generation | ebooklib |
-| Mobi conversion | Calibre CLI (`ebook-convert`) |
-| PDF generation | WeasyPrint |
-| Dev environment | Docker Compose |
 
 ---
 
@@ -172,8 +210,7 @@ bloxp-revived/
 ├── deploy.sh                  # Local production deploy script
 ├── stop.sh                    # Stop all local services
 ├── docker-compose.yml         # Full stack via Docker
-├── TODO.md                    # Roadmap and known issues
-└── README.es.md               # Spanish documentation
+└── TODO.md                    # Roadmap and known issues
 ```
 
 ---
@@ -214,6 +251,18 @@ Copy `.env.example` to `backend/.env` and adjust:
 
 ---
 
+## API Reference
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/jobs` | Create a new ebook job |
+| `GET` | `/api/jobs/:id` | Poll job status and progress |
+| `GET` | `/api/jobs/:id/download/:format` | Download `epub`, `mobi`, or `pdf` |
+| `POST` | `/api/contact` | Send a contact form message |
+| `GET` | `/api/health` | Health check |
+
+---
+
 ## Contributing
 
 Pull requests are welcome. For major changes, please open an issue first.
@@ -223,7 +272,7 @@ See [TODO.md](TODO.md) for a list of ideas and known issues.
 
 ## License
 
-MIT
+[MIT](LICENSE)
 
 ---
 
