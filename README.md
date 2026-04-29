@@ -261,6 +261,18 @@ Copy `.env.example` to `backend/.env` and adjust:
 | `POST` | `/api/contact` | Send a contact form message |
 | `GET` | `/api/health` | Health check |
 
+### Post limit override
+
+By default Bloxp fetches up to **250 posts** per job. You can override this by appending `?noMaxPosts` to the blog URL you submit:
+
+| Parameter | Limit |
+|-----------|-------|
+| *(not set)* | 250 posts |
+| `?noMaxPosts=true` | 500 posts |
+| `?noMaxPosts=150` | 150 posts (any number) |
+
+Example: `https://example.com/blog?noMaxPosts=true`
+
 ---
 
 ## Contributing

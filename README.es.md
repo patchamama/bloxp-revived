@@ -261,6 +261,18 @@ Copiá `.env.example` a `backend/.env` y ajustá según necesites:
 | `POST` | `/api/contact` | Enviar mensaje por el formulario de contacto |
 | `GET` | `/api/health` | Health check |
 
+### Límite de posts personalizado
+
+Por defecto Bloxp obtiene hasta **250 posts** por job. Podés sobrescribir este límite agregando `?noMaxPosts` a la URL del blog que enviás:
+
+| Parámetro | Límite |
+|-----------|--------|
+| *(sin parámetro)* | 250 posts |
+| `?noMaxPosts=true` | 500 posts |
+| `?noMaxPosts=150` | 150 posts (cualquier número) |
+
+Ejemplo: `https://ejemplo.com/blog?noMaxPosts=true`
+
 ---
 
 ## Contribuir
