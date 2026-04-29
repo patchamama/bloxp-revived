@@ -16,6 +16,7 @@ interface StoreFields {
   parentTag: boolean
   linksToFootnotes: boolean
   addTOC: boolean
+  includeImages: boolean
 }
 
 interface EbookStore extends StoreFields {
@@ -41,6 +42,7 @@ const defaults: StoreFields = {
   parentTag: false,
   linksToFootnotes: false,
   addTOC: true,
+  includeImages: true,
 }
 
 export const useEbookStore = create<EbookStore>((set) => ({

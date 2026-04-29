@@ -13,3 +13,4 @@ readability-lxml==0.8.1
 ebooklib==0.18.0
 weasyprint==63.1
 python-multipart==0.0.20
+Pillow==11.2.1

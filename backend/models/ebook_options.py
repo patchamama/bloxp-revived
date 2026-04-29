@@ -6,6 +6,7 @@ class BasicJobRequest(BaseModel):
     feed_url: str
     links_to_footnotes: bool = False
     add_toc: bool = True
+    include_images: bool = True
 
 
 class CustomSelector(BaseModel):
@@ -24,5 +25,6 @@ class AdvancedJobRequest(BaseModel):
     site_description: str = ""
     links_to_footnotes: bool = False
     add_toc: bool = True
+    include_images: bool = True
     max_posts: int = 250
     custom_selector: Optional[CustomSelector] = None

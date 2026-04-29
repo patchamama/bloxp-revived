@@ -5,7 +5,7 @@ import { useEbookStore } from '@/stores/ebookStore'
 
 export function useSubmitBasicJob() {
   const navigate = useNavigate()
-  const { feedUrl, linksToFootnotes, addTOC, setActiveJobId } = useEbookStore()
+  const { feedUrl, linksToFootnotes, addTOC, includeImages, setActiveJobId } = useEbookStore()
 
   return useMutation({
     mutationFn: () =>
@@ -13,6 +13,7 @@ export function useSubmitBasicJob() {
         feed_url: feedUrl,
         links_to_footnotes: linksToFootnotes,
         add_toc: addTOC,
+        include_images: includeImages,
       }),
     onSuccess: ({ job_id }) => {
       setActiveJobId(job_id)

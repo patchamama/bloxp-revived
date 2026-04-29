@@ -2,6 +2,7 @@ export interface BasicJobRequest {
   feed_url: string
   links_to_footnotes: boolean
   add_toc: boolean
+  include_images: boolean
 }
 
 export interface AdvancedJobRequest {

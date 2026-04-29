@@ -115,10 +115,10 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
             _save_state(state)
 
         posts = asyncio.run(
-            crawl_from_feed(post_urls, max_posts=max_posts, on_progress=on_progress)
+            crawl_from_feed(post_urls, max_posts=max_posts, on_progress=on_progress, include_images=req.include_images)
         )
 
-        _generate_ebooks(state, posts, feed.title, feed.description, req.add_toc, req.links_to_footnotes)
+        _generate_ebooks(state, posts, feed.title, feed.description, req.add_toc, req.links_to_footnotes, req.include_images)
 
     except Exception as exc:
         state.status = JobStatus.error
@@ -154,13 +154,14 @@ def process_advanced(self, job_id: str, payload: dict[str, Any]) -> None:
                 max_posts=req.max_posts,
                 custom_selector=custom,
                 on_progress=on_progress,
+                include_images=req.include_images,
             )
         )
 
         state.posts_found = len(posts)
         _generate_ebooks(
             state, posts, req.site_title, req.site_description,
-            req.add_toc, req.links_to_footnotes
+            req.add_toc, req.links_to_footnotes, req.include_images
         )
 
     except Exception as exc:
@@ -177,6 +178,7 @@ def _generate_ebooks(
     description: str,
     add_toc: bool,
     links_to_footnotes: bool,
+    include_images: bool = True,
 ) -> None:
     if not posts:
         state.status = JobStatus.error
@@ -190,7 +192,7 @@ def _generate_ebooks(
     _save_state(state)
 
     ep = epub_path(state.job_id)
-    build_epub(posts, title, description, ep, add_toc, links_to_footnotes)
+    build_epub(posts, title, description, ep, add_toc, links_to_footnotes, include_images)
     state.epub_path = str(ep)
     state.progress = 85
     _save_state(state)

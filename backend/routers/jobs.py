@@ -22,6 +22,7 @@ class JobCreateRequest(BaseModel):
     # shared
     links_to_footnotes: bool = False
     add_toc: bool = True
+    include_images: bool = True
     max_posts: int = 250
     # custom selector (advanced) — accepts nested object from frontend
     custom_selector: Optional[Any] = None
@@ -38,6 +39,7 @@ def create_job_endpoint(req: JobCreateRequest) -> dict:
             "feed_url": req.feed_url,
             "links_to_footnotes": req.links_to_footnotes,
             "add_toc": req.add_toc,
+            "include_images": req.include_images,
         }
         process_basic.delay(state.job_id, payload)
     else:
@@ -57,6 +59,7 @@ def create_job_endpoint(req: JobCreateRequest) -> dict:
             "site_description": req.site_description,
             "links_to_footnotes": req.links_to_footnotes,
             "add_toc": req.add_toc,
+            "include_images": req.include_images,
             "max_posts": req.max_posts,
             "custom_selector": req.custom_selector,
         }

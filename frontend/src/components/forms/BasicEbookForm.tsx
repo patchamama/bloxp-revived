@@ -8,7 +8,7 @@ import { useEbookStore } from '@/stores/ebookStore'
 import { useSubmitBasicJob } from '@/hooks/useSubmitJob'
 
 export function BasicEbookForm() {
-  const { feedUrl, linksToFootnotes, addTOC, setField } = useEbookStore()
+  const { feedUrl, linksToFootnotes, addTOC, includeImages, setField } = useEbookStore()
   const [validationError, setValidationError] = useState('')
   const mutation = useSubmitBasicJob()
 
@@ -45,6 +45,12 @@ export function BasicEbookForm() {
           label="Add table of contents"
           checked={addTOC}
           onChange={(e) => setField('addTOC', e.target.checked)}
+        />
+        <Checkbox
+          id="includeImages"
+          label="Include images"
+          checked={includeImages}
+          onChange={(e) => setField('includeImages', e.target.checked)}
         />
       </div>
       {mutation.isError && (

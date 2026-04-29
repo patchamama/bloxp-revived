@@ -25,6 +25,7 @@ async def crawl_from_feed(
     post_urls: list[str],
     max_posts: int = 250,
     on_progress: Optional[Callable[[int, int], None]] = None,
+    include_images: bool = True,
 ) -> list[Post]:
     urls = post_urls[:max_posts]
     total = len(urls)
@@ -38,7 +39,7 @@ async def crawl_from_feed(
                 try:
                     r = await client.get(url)
                     r.raise_for_status()
-                    title, content = extract_content(r.text, url)
+                    title, content = extract_content(r.text, url, include_images=include_images)
                     if on_progress:
                         on_progress(idx + 1, total)
                     return Post(url=url, title=title, content=content)
@@ -56,6 +57,7 @@ async def crawl_from_url(
     max_posts: int = 250,
     custom_selector: Optional[CustomSelector] = None,
     on_progress: Optional[Callable[[int, int], None]] = None,
+    include_images: bool = True,
 ) -> list[Post]:
     posts: list[Post] = []
     current_url: Optional[str] = start_url
@@ -66,7 +68,7 @@ async def crawl_from_url(
                 r = await client.get(current_url)
                 r.raise_for_status()
                 html = r.text
-                title, content = extract_content(html, current_url)
+                title, content = extract_content(html, current_url, include_images=include_images)
 
                 if not posts and start_title:
                     title = start_title
