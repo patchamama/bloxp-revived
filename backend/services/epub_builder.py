@@ -1,7 +1,7 @@
 import io
 import mimetypes
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
@@ -21,20 +21,17 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; Bloxp/2.0; +https://bloxp.app
 
 
 def _fetch_image(url: str) -> tuple[bytes, str] | None:
-    """Download image, return (bytes, mime_type) or None on failure."""
     try:
         r = httpx.get(url, headers=HEADERS, timeout=15, follow_redirects=True)
         r.raise_for_status()
-        mime = r.headers.get("content-type", "").split(";")[0].strip() or "image/jpeg"
-        # Strip parameters from mime
-        mime = mime.lower()
+        mime = r.headers.get("content-type", "").split(";")[0].strip().lower() or "image/jpeg"
         return r.content, mime
     except Exception:
         return None
 
 
 def _to_epub_image(data: bytes, mime: str) -> tuple[bytes, str]:
-    """Convert incompatible formats (WebP, AVIF, BMP…) to JPEG."""
+    """Convert incompatible formats to JPEG."""
     if mime in _CONVERT_TO_JPEG or mime not in _EPUB_MIME:
         try:
             img = Image.open(io.BytesIO(data)).convert("RGB")
@@ -54,7 +51,7 @@ def _ext_for_mime(mime: str) -> str:
         "image/svg+xml": "svg",
         "image/webp": "webp",
     }
-    return exts.get(mime, mimetypes.guess_extension(mime, strict=False) or "jpg").lstrip(".")
+    return exts.get(mime, (mimetypes.guess_extension(mime, strict=False) or ".jpg")).lstrip(".")
 
 
 def _embed_images(
@@ -63,7 +60,7 @@ def _embed_images(
     book: epub.EpubBook,
     img_counter: list[int],
 ) -> str:
-    """Download all <img> in html, embed them in the book, rewrite src."""
+    """Download all <img> in html, embed in book, rewrite src to relative path."""
     soup = BeautifulSoup(html, "lxml")
 
     for img_tag in soup.find_all("img"):
@@ -84,6 +81,9 @@ def _embed_images(
         idx = img_counter[0]
         img_counter[0] += 1
         img_name = f"image{idx:04d}.{ext}"
+        # chapters live at EPUB/chapter_XXXX.xhtml
+        # images live at EPUB/images/imageXXXX.ext
+        # relative path from chapter to image = images/imageXXXX.ext
         img_path = f"images/{img_name}"
 
         epub_img = epub.EpubImage()
@@ -92,8 +92,7 @@ def _embed_images(
         epub_img.content = data
         book.add_item(epub_img)
 
-        img_tag["src"] = f"../{img_path}"
-        # Remove srcset — not supported in EPUB readers
+        img_tag["src"] = img_path  # same directory level — no ../
         img_tag.attrs.pop("srcset", None)
         img_tag.attrs.pop("loading", None)
 
@@ -115,7 +114,7 @@ def build_epub(
     book.add_metadata("DC", "description", description)
 
     chapters: list[epub.EpubHtml] = []
-    img_counter = [0]  # mutable counter shared across posts
+    img_counter = [0]
 
     for i, post in enumerate(posts):
         content = post.content or "<p>No content</p>"
@@ -135,11 +134,14 @@ def build_epub(
         book.add_item(chapter)
         chapters.append(chapter)
 
-    book.toc = (
-        [(epub.Section(post.title), [ch]) for post, ch in zip(posts, chapters)]
-        if add_toc
-        else chapters
-    )
+    if add_toc:
+        # Flat list of direct links — each post is one clickable TOC entry
+        book.toc = [
+            epub.Link(ch.file_name, post.title, f"chapter_{i}")
+            for i, (post, ch) in enumerate(zip(posts, chapters))
+        ]
+    else:
+        book.toc = chapters
 
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
