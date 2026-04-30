@@ -146,6 +146,9 @@ def _embed_images(
         img_tag["src"] = img_path
         img_tag.attrs.pop("srcset", None)
         img_tag.attrs.pop("loading", None)
+        img_tag.attrs.pop("width", None)
+        img_tag.attrs.pop("height", None)
+        img_tag["style"] = "max-width:66%;width:auto;height:auto;display:block;margin:0 auto;text-align:center"
 
     return soup.body.decode_contents() if soup.body else str(soup)
 
@@ -262,6 +265,9 @@ def _strip_inline_styles(root) -> None:
         tag.attrs.pop("size", None)   # <font size=...>
         tag.attrs.pop("face", None)   # <font face=...>
         tag.attrs.pop("color", None)  # <font color=...>
+        if tag.name == "img":
+            tag.attrs.pop("width", None)
+            tag.attrs.pop("height", None)
 
 
 def _collapse_double_spaces(root) -> None:
@@ -270,6 +276,9 @@ def _collapse_double_spaces(root) -> None:
     for node in root.find_all(string=True):
         if isinstance(node, NavigableString) and "  " in str(node):
             node.replace_with(_DOUBLE_SPACE_RE.sub(" ", str(node)))
+
+
+_IMG_WRAPPER_STYLE = "text-align:center;margin:1em auto"
 
 
 def _isolate_images(root) -> None:
@@ -293,12 +302,14 @@ def _isolate_images(root) -> None:
         if len(siblings) == 1 and siblings[0] is img:
             if parent.name not in ("body", "html", "[document]"):
                 parent.name = "p"
+                parent["style"] = _IMG_WRAPPER_STYLE
             continue
 
         # Extract <img> from its parent and insert a <p><img></p> before the parent
         img.extract()
         wrapper = Tag(name="p")
         wrapper["class"] = ["img-block"]
+        wrapper["style"] = _IMG_WRAPPER_STYLE
         wrapper.append(img)
 
         # Find the nearest block ancestor to insert next to

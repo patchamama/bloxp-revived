@@ -40,7 +40,7 @@ const defaults: StoreFields = {
   attrValue: '',
   preString: '',
   parentTag: false,
-  linksToFootnotes: false,
+  linksToFootnotes: true,
   addTOC: true,
   includeImages: true,
 }

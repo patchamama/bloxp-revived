@@ -61,6 +61,9 @@ def _clean_for_pdf(content: str, post_url: str, image_cache: dict) -> str:
             data, mime = entry
             b64 = base64.b64encode(data).decode()
             img["src"] = f"data:{mime};base64,{b64}"
+            img.attrs.pop("width", None)
+            img.attrs.pop("height", None)
+            img["style"] = "max-width:66%;width:auto;height:auto;display:block;margin:0 auto;text-align:center"
         else:
             img.decompose()
 
