@@ -582,7 +582,18 @@ def _detect_verse_blocks(root, soup) -> None:
                 br_run = []
         _flush_br_run(br_run)
 
-    # Case 2: run of 4+ consecutive short verse-like <p> elements
+    def _is_stanza_div(node) -> bool:
+        """Blogger stanza separator: <div> with only <br> children and no text."""
+        if not (hasattr(node, "name") and node.name == "div"):
+            return False
+        if node.get_text(strip=True):
+            return False
+        kids = [c for c in node.children
+                if not (isinstance(c, NavigableString) and not c.strip())]
+        return bool(kids) and all(getattr(c, "name", None) == "br" for c in kids)
+
+    # Case 2: run of 4+ consecutive <p> elements (single stanza-break <div>s allowed
+    # between lines; 2+ consecutive stanza-break divs = section separator → stop run)
     seen: set[int] = set()
     for p in list(root.find_all("p")):
         if id(p) in seen:
@@ -590,23 +601,45 @@ def _detect_verse_blocks(root, soup) -> None:
         if p.find_parent(class_="verse-block"):
             continue
 
-        # Collect the run: consecutive <p> (skip pure-whitespace NavigableStrings)
         run: list = [p]
         node = p.next_sibling
         while node is not None:
             if isinstance(node, NavigableString) and not node.strip():
                 node = node.next_sibling
                 continue
-            if hasattr(node, "name") and node.name == "p":
-                run.append(node)
-                node = node.next_sibling
+            if hasattr(node, "name"):
+                if node.name == "p":
+                    run.append(node)
+                    node = node.next_sibling
+                elif _is_stanza_div(node):
+                    # Peek ahead: 2+ consecutive stanza divs = section separator → stop
+                    stanza_run = [node]
+                    look = node.next_sibling
+                    while look is not None:
+                        if isinstance(look, NavigableString) and not look.strip():
+                            look = look.next_sibling
+                            continue
+                        if _is_stanza_div(look):
+                            stanza_run.append(look)
+                            look = look.next_sibling
+                        else:
+                            break
+                    if len(stanza_run) > 1:
+                        break
+                    run.append(stanza_run[0])
+                    node = look
+                else:
+                    break
             else:
                 break
 
-        if len(run) < 4:
+        # Require 4+ actual <p> elements (stanza-break divs don't count)
+        p_count = sum(1 for el in run if hasattr(el, "name") and el.name == "p")
+        if p_count < 4:
             continue
 
-        texts = [el.get_text(strip=True) for el in run]
+        texts = [el.get_text(strip=True) for el in run
+                 if hasattr(el, "name") and el.name == "p"]
         non_empty_texts = [t for t in texts if t]
         if not non_empty_texts:
             continue
@@ -614,7 +647,7 @@ def _detect_verse_blocks(root, soup) -> None:
         if avg_len > 100:
             continue
         verse_ratio = sum(1 for t in non_empty_texts if _is_verse_line(t)) / len(non_empty_texts)
-        if verse_ratio < 0.6:
+        if verse_ratio < 0.45:
             continue
 
         # Wrap the run in a verse-block div
@@ -624,10 +657,15 @@ def _detect_verse_blocks(root, soup) -> None:
         prev_was_stanza = False
         for el in run:
             seen.add(id(el))
+            # Stanza-break div → convert to empty <p> then treat as stanza separator
+            if hasattr(el, "name") and el.name == "div":
+                el.name = "p"
+                for br in list(el.find_all("br")):
+                    br.decompose()
             is_empty = not el.get_text(strip=True)
             if is_empty:
                 if prev_was_stanza:
-                    el.extract()  # collapse consecutive blank-p separators into one
+                    el.extract()  # collapse consecutive stanza separators
                     continue
                 _add_class(el, "verse-stanza")
             prev_was_stanza = is_empty
