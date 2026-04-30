@@ -62,27 +62,58 @@ echo -e "\n${BOLD}╔═══════════════════�
 echo -e "║   Bloxp Revived — Local Deploy       ║"
 echo -e "╚══════════════════════════════════════╝${NC}\n"
 
+# ── Detect OS ─────────────────────────────────────────────────────────────────
+OS="$(uname -s)"
+
 # ── 1. Prerequisites check ────────────────────────────────────────────────────
 step "Checking prerequisites"
 
-command -v node  >/dev/null 2>&1 || error "Node.js not found. Install via: brew install node"
-command -v npm   >/dev/null 2>&1 || error "npm not found."
-command -v python3 >/dev/null 2>&1 || error "Python 3 not found. Install via: brew install python"
+if [ "$OS" = "Linux" ]; then
+  command -v node  >/dev/null 2>&1 || error "Node.js not found. Install via: sudo apt-get install -y nodejs npm"
+  command -v npm   >/dev/null 2>&1 || error "npm not found. Install via: sudo apt-get install -y npm"
+  command -v python3 >/dev/null 2>&1 || error "Python 3 not found. Install via: sudo apt-get install -y python3 python3-venv python3-pip"
+else
+  command -v node  >/dev/null 2>&1 || error "Node.js not found. Install via: brew install node"
+  command -v npm   >/dev/null 2>&1 || error "npm not found."
+  command -v python3 >/dev/null 2>&1 || error "Python 3 not found. Install via: brew install python"
+fi
 
 NODE_VER=$(node -v | sed 's/v//')
 PY_VER=$(python3 --version | awk '{print $2}')
 info "Node.js $NODE_VER | Python $PY_VER"
 
-# Check Redis is reachable
+# ── Check / install / start Redis ─────────────────────────────────────────────
 if ! redis-cli ping >/dev/null 2>&1; then
-  warn "Redis is not running. Starting via brew services..."
-  if command -v brew >/dev/null 2>&1; then
-    brew services start redis >/dev/null 2>&1 || error "Could not start Redis. Run: brew install redis && brew services start redis"
-    sleep 1
-    redis-cli ping >/dev/null 2>&1 || error "Redis still unreachable after start attempt."
+  warn "Redis is not running. Attempting to start..."
+  if [ "$OS" = "Linux" ]; then
+    if ! command -v redis-server >/dev/null 2>&1; then
+      info "Installing Redis via apt..."
+      sudo apt-get update -qq \
+        && sudo apt-get install -y redis-server >/dev/null 2>&1 \
+        || error "Could not install Redis. Run: sudo apt-get install redis-server"
+    fi
+    if command -v systemctl >/dev/null 2>&1; then
+      sudo systemctl start redis-server 2>/dev/null \
+        || sudo service redis-server start 2>/dev/null \
+        || redis-server --daemonize yes 2>/dev/null \
+        || error "Could not start Redis."
+    else
+      sudo service redis-server start 2>/dev/null \
+        || redis-server --daemonize yes 2>/dev/null \
+        || error "Could not start Redis."
+    fi
+  elif [ "$OS" = "Darwin" ]; then
+    if command -v brew >/dev/null 2>&1; then
+      brew services start redis >/dev/null 2>&1 \
+        || error "Could not start Redis. Run: brew install redis && brew services start redis"
+    else
+      error "Redis is not running. Install: brew install redis && brew services start redis"
+    fi
   else
     error "Redis is not running. Start it manually: redis-server"
   fi
+  sleep 1
+  redis-cli ping >/dev/null 2>&1 || error "Redis still unreachable after start attempt."
 fi
 success "Redis is running"
 
@@ -116,29 +147,28 @@ cp -r "$FRONTEND_DIR/dist" "$STATIC_DIR"
 success "Copied to $STATIC_DIR"
 
 # ── 4. Python virtual environment ─────────────────────────────────────────────
+step "Setting up Python virtual environment"
+cd "$BACKEND_DIR"
+
 if [ "$SETUP_VENV" = true ]; then
-  step "Setting up Python virtual environment"
-  cd "$BACKEND_DIR"
-
   if [ -d "$VENV_DIR" ]; then
-    info "Virtual environment already exists, updating..."
-  else
-    info "Creating virtual environment at $VENV_DIR"
-    python3 -m venv "$VENV_DIR"
+    info "Virtual environment already exists, recreating..."
+    rm -rf "$VENV_DIR"
   fi
-
-  # shellcheck disable=SC1091
-  source "$VENV_DIR/bin/activate"
-
-  info "Installing Python dependencies..."
-  pip install --upgrade pip --quiet
-  pip install -r requirements.txt --quiet
-  success "Python dependencies installed"
+  info "Creating virtual environment at $VENV_DIR"
+  python3 -m venv "$VENV_DIR"
 else
-  info "Skipping venv setup (--no-venv)"
-  # shellcheck disable=SC1091
-  source "$VENV_DIR/bin/activate"
+  info "Skipping venv creation (--no-venv)"
+  [ -d "$VENV_DIR" ] || error "No .venv found at $VENV_DIR. Run without --no-venv first."
 fi
+
+# shellcheck disable=SC1091
+source "$VENV_DIR/bin/activate"
+
+info "Installing Python dependencies..."
+pip install --upgrade pip --quiet
+pip install -r requirements.txt --quiet
+success "Python dependencies installed"
 
 # ── 5. Create required directories ────────────────────────────────────────────
 step "Creating runtime directories"

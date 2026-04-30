@@ -17,6 +17,11 @@ node_modules/
 # Generated ebooks
 generated/
 
+# Runtime artifacts
+logs/
+.pids
+backend/celerybeat-schedule
+
 # IDE
 .vscode/
 .idea/
