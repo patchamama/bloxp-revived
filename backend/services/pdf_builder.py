@@ -1,15 +1,30 @@
+import base64
 from pathlib import Path
+from urllib.parse import urljoin
+
 from bs4 import BeautifulSoup
 from services.crawler import Post
 
 _CSS = """
-body { font-family: Georgia, serif; line-height: 1.6; margin: 2cm; }
-h1 { font-size: 1.8em; margin-top: 2em; page-break-before: always; }
+body { font-family: Georgia, serif; font-size: 11pt; line-height: 1.7; margin: 2cm; color: #111; }
+h1 { font-size: 1.6em; font-weight: bold; margin-top: 2em; margin-bottom: 0.6em;
+     line-height: 1.3; page-break-before: always; }
 h1:first-child { page-break-before: avoid; }
-a { color: #333; }
-img { max-width: 100%; height: auto; display: block; margin: 1em auto; }
+h2 { font-size: 1.3em; font-weight: bold; margin: 1em 0 0.4em; }
+h3, h4, h5, h6 { font-size: 1.1em; font-weight: bold; margin: 0.8em 0 0.3em; }
+p { font-size: 1em; margin: 0.5em 0; text-align: justify; }
+li { font-size: 1em; margin: 0.3em 0; }
+blockquote { font-size: 1em; margin: 1em 2em; font-style: italic; }
+a { color: #1a0dab; }
+figure { display: block; text-align: center; margin: 1.5em auto; width: 66%; }
+img { display: block; max-width: 66%; height: auto; margin: 1.5em auto; }
+hr { margin: 1.5em 0; }
+ul, ol { margin: 0.5em 0 0.5em 1.5em; padding: 0; }
+* { font-size: inherit; }
+h1 { font-size: 1.6em; }
+h2 { font-size: 1.3em; }
+h3, h4, h5, h6 { font-size: 1.1em; }
 """
-
 
 _BLOCK_TAGS = {"address", "article", "aside", "blockquote", "canvas", "dd", "div",
                "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
@@ -25,22 +40,47 @@ def _div_is_paragraph(tag) -> bool:
     return bool(tag.get_text(strip=True))
 
 
-def _clean_for_pdf(content: str) -> str:
+def _clean_for_pdf(content: str, post_url: str, image_cache: dict) -> str:
     soup = BeautifulSoup(content, "lxml")
     body = soup.find("body")
     root = body if body else soup
-    # Strip all images — WeasyPrint fetches them synchronously, kills performance at scale
+
     for img in root.find_all("img"):
-        img.decompose()
+        src = img.get("src", "").strip()
+        if not src:
+            img.decompose()
+            continue
+        if src.startswith("data:"):
+            continue
+
+        # Try epub-relative path first (e.g. "images/image0000.jpg"), then absolute URL
+        abs_url = urljoin(post_url, src) if not src.startswith("http") else src
+        entry = image_cache.get(src) or image_cache.get(abs_url)
+
+        if entry:
+            data, mime = entry
+            b64 = base64.b64encode(data).decode()
+            img["src"] = f"data:{mime};base64,{b64}"
+        else:
+            img.decompose()
+
     for tag in root.find_all(["figure", "div"]):
-        if not tag.get_text(strip=True):
+        if not tag.get_text(strip=True) and not tag.find("img"):
             tag.decompose()
     for div in root.find_all("div"):
         if _div_is_paragraph(div):
             div.name = "p"
     for tag in root.find_all(["p", "div"]):
-        if not tag.get_text(strip=True):
+        if not tag.get_text(strip=True) and not tag.find("img"):
             tag.decompose()
+
+    # Strip inline style overrides from CMS
+    for tag in root.find_all(True):
+        tag.attrs.pop("style", None)
+        tag.attrs.pop("size", None)
+        tag.attrs.pop("face", None)
+        tag.attrs.pop("color", None)
+
     return root.decode_contents() if body else str(root)
 
 
@@ -48,11 +88,14 @@ def build_pdf(
     posts: list[Post],
     title: str,
     output_path: Path,
+    image_cache: dict | None = None,
 ) -> Path:
     from weasyprint import HTML, CSS
 
+    cache = image_cache or {}
+
     chapters = "".join(
-        f"<h1>{p.title}</h1>{_clean_for_pdf(p.content or '<p>No content</p>')}"
+        f"<h1>{p.title}</h1>{_clean_for_pdf(p.content or '<p>No content</p>', p.url, cache)}"
         for p in posts
     )
 
@@ -60,7 +103,7 @@ def build_pdf(
 <html><head><meta charset="utf-8"><title>{title}</title></head>
 <body><h1 class="cover">{title}</h1>{chapters}</body></html>"""
 
-    HTML(string=html_content, base_url="https://").write_pdf(
+    HTML(string=html_content).write_pdf(
         str(output_path), stylesheets=[CSS(string=_CSS)]
     )
     return output_path

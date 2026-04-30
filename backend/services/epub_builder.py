@@ -92,8 +92,12 @@ def _embed_images(
     book: epub.EpubBook,
     img_counter: list[int],
     on_image: Callable[[int], None] | None = None,
+    image_cache: dict | None = None,
 ) -> str:
-    """Download all <img> in html, embed in book, rewrite src to relative path."""
+    """Download all <img> in html, embed in book, rewrite src to relative path.
+
+    image_cache: if provided, stores url -> (data, mime) for reuse in PDF generation.
+    """
     soup = BeautifulSoup(html, "lxml")
 
     for img_tag in soup.find_all("img"):
@@ -108,19 +112,27 @@ def _embed_images(
             img_tag.decompose()
             continue
 
-        result = _fetch_image(abs_url)
-        if not result:
-            img_tag.decompose()
-            continue
+        if image_cache is not None and abs_url in image_cache:
+            data, mime = image_cache[abs_url]
+        else:
+            result = _fetch_image(abs_url)
+            if not result:
+                img_tag.decompose()
+                continue
+            raw, mime = result
+            data, mime = _to_epub_image(raw, mime)
+            if image_cache is not None:
+                image_cache[abs_url] = (data, mime)
 
-        raw, mime = result
-        data, mime = _to_epub_image(raw, mime)
         ext = _ext_for_mime(mime)
-
         idx = img_counter[0]
         img_counter[0] += 1
         img_name = f"image{idx:04d}.{ext}"
         img_path = f"images/{img_name}"
+
+        # Also index by epub-relative path so pdf_builder can look up by src
+        if image_cache is not None:
+            image_cache[img_path] = (data, mime)
 
         epub_img = epub.EpubImage()
         epub_img.file_name = img_path
@@ -235,6 +247,26 @@ def _div_is_paragraph(tag) -> bool:
     return bool(tag.get_text(strip=True))
 
 
+_DOUBLE_SPACE_RE = re.compile(r'  +')
+
+
+def _strip_inline_styles(root) -> None:
+    """Remove inline style/font attrs set by blog CMSs that break typography homogeneity."""
+    for tag in root.find_all(True):
+        tag.attrs.pop("style", None)
+        tag.attrs.pop("size", None)   # <font size=...>
+        tag.attrs.pop("face", None)   # <font face=...>
+        tag.attrs.pop("color", None)  # <font color=...>
+
+
+def _collapse_double_spaces(root) -> None:
+    """Collapse runs of spaces in text nodes to a single space."""
+    from bs4 import NavigableString
+    for node in root.find_all(string=True):
+        if isinstance(node, NavigableString) and "  " in str(node):
+            node.replace_with(_DOUBLE_SPACE_RE.sub(" ", str(node)))
+
+
 def _clean_content(html: str) -> str:
     """Normalize HTML for epub: convert text-only divs to <p>, remove empty paragraphs."""
     soup = BeautifulSoup(html, "lxml")
@@ -264,10 +296,49 @@ def _clean_content(html: str) -> str:
         if not tag.get_text(strip=True) and not tag.find(["img", "figure"]):
             tag.decompose()
 
+    _strip_inline_styles(root)
     _linkify_text_nodes(root)
     _fix_reference_spacing(root)
+    _collapse_double_spaces(root)
 
     return root.decode_contents() if body else str(root)
+
+
+_EPUB_CSS = """
+body {
+    font-family: Georgia, serif;
+    font-size: 1em;
+    line-height: 1.7;
+    margin: 1em 2em;
+    color: #111;
+}
+h1 { font-size: 1.6em; font-weight: bold; margin: 1.2em 0 0.6em; line-height: 1.3; }
+h2 { font-size: 1.3em; font-weight: bold; margin: 1em 0 0.4em; }
+h3, h4, h5, h6 { font-size: 1.1em; font-weight: bold; margin: 0.8em 0 0.3em; }
+p  { font-size: 1em; margin: 0.5em 0; text-align: justify; }
+li { font-size: 1em; margin: 0.3em 0; }
+blockquote { font-size: 1em; margin: 1em 2em; font-style: italic; }
+a  { color: #1a0dab; text-decoration: underline; }
+figure {
+    display: block;
+    text-align: center;
+    margin: 1.5em auto;
+    width: 66%;
+}
+img {
+    display: block;
+    max-width: 66%;
+    height: auto;
+    margin: 1.5em auto;
+}
+hr { margin: 1.5em 0; border: none; border-top: 1px solid #ccc; }
+ul, ol { margin: 0.5em 0 0.5em 1.5em; padding: 0; }
+/* Strip inline font-size overrides set by blog CMS */
+* { font-size: inherit !important; }
+h1 { font-size: 1.6em !important; }
+h2 { font-size: 1.3em !important; }
+h3, h4, h5, h6 { font-size: 1.1em !important; }
+"""
 
 
 def build_epub(
@@ -279,14 +350,25 @@ def build_epub(
     links_to_footnotes: bool = False,
     include_images: bool = True,
     on_image: Callable[[int], None] | None = None,
-) -> Path:
+) -> tuple[Path, dict]:
+    """Returns (output_path, image_cache) where image_cache maps url -> (data, mime)."""
     book = epub.EpubBook()
     book.set_title(title)
     book.set_language("es")
     book.add_metadata("DC", "description", description)
 
+    # Normalize typography across all chapters
+    css = epub.EpubItem(
+        uid="style",
+        file_name="style/main.css",
+        media_type="text/css",
+        content=_EPUB_CSS,
+    )
+    book.add_item(css)
+
     chapters: list[epub.EpubHtml] = []
     img_counter = [0]
+    image_cache: dict = {}
 
     for i, post in enumerate(posts):
         content = post.content or "<p>No content</p>"
@@ -295,7 +377,10 @@ def build_epub(
         content = _clean_content(content)
 
         if include_images:
-            content = _embed_images(content, post.url, book, img_counter, on_image=on_image)
+            content = _embed_images(
+                content, post.url, book, img_counter,
+                on_image=on_image, image_cache=image_cache,
+            )
 
         if links_to_footnotes:
             content = _convert_links_to_footnotes(content)
@@ -305,6 +390,7 @@ def build_epub(
             file_name=f"chapter_{i:04d}.xhtml",
             lang="es",
         )
+        chapter.add_link(href="../style/main.css", rel="stylesheet", type="text/css")
         chapter.content = f"<h1>{post.title}</h1>{content}"
         book.add_item(chapter)
         chapters.append(chapter)
@@ -323,20 +409,23 @@ def build_epub(
     book.spine = ["nav"] + chapters
 
     epub.write_epub(str(output_path), book)
-    return output_path
+    return output_path, image_cache
 
 
 def _convert_links_to_footnotes(html: str) -> str:
     soup = BeautifulSoup(html, "lxml")
-    footnotes: list[str] = []
+    footnotes: list[tuple[int, str]] = []
 
     for i, a in enumerate(soup.find_all("a", href=True), 1):
         href = a["href"]
         a.replace_with(f"{a.get_text()}[{i}] ")
-        footnotes.append(f"[{i}] {href}")
+        footnotes.append((i, href))
 
     if footnotes:
-        items = "".join(f"<li>{fn}</li>" for fn in footnotes)
+        items = "".join(
+            f'<li>[{n}] <a href="{href}">{href}</a></li>'
+            for n, href in footnotes
+        )
         fn_html = f"<hr/><ul>{items}</ul>"
         soup.append(BeautifulSoup(fn_html, "lxml"))
 
