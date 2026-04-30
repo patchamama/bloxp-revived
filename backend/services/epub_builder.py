@@ -364,11 +364,19 @@ def _isolate_images(root) -> None:
                 parent["style"] = _IMG_WRAPPER_STYLE
             continue
 
-        # Extract <img> from its parent and insert a <p><img></p> before the parent
-        img.extract()
+        # Extract <img> from its parent and insert a <p><img></p> block.
         wrapper = Tag(name="p")
         wrapper["class"] = ["img-block"]
         wrapper["style"] = _IMG_WRAPPER_STYLE
+
+        # If the img is a direct child of the root/body element, replace it in-place
+        # (insert_before on body would put the wrapper outside the body tag).
+        if parent.name in ("body", "html", "[document]"):
+            img.replace_with(wrapper)
+            wrapper.append(img)
+            continue
+
+        img.extract()
         wrapper.append(img)
 
         # Find the nearest block ancestor to insert next to
