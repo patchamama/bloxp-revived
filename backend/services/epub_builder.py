@@ -309,6 +309,78 @@ def _div_is_paragraph(tag) -> bool:
     return bool(tag.get_text(strip=True))
 
 
+def _wrap_loose_paragraphs(root) -> None:
+    """Wrap loose text/inline nodes at root level into <p> tags.
+
+    Old Blogger posts use bare text nodes + <br> separators as direct children
+    of the body element instead of <p> tags. This function detects that pattern
+    and re-wraps the content so CSS paragraph rules (indent, margin) apply.
+    """
+    from bs4 import NavigableString, Tag
+
+    _WRAP_INLINE = frozenset({
+        "a", "abbr", "acronym", "b", "big", "cite", "code", "em", "i",
+        "small", "span", "strong", "sub", "sup", "time", "tt", "u",
+    })
+
+    def _has_content(items: list) -> bool:
+        for x in items:
+            if isinstance(x, NavigableString) and str(x).strip():
+                return True
+            if hasattr(x, "name") and x.name not in ("br",) and x.get_text(strip=True):
+                return True
+        return False
+
+    def _flush(acc: list, anchor) -> None:
+        if not _has_content(acc):
+            for x in acc:
+                if x.parent is not None:
+                    x.extract()
+            return
+        p = Tag(name="p")
+        for x in acc:
+            if x.parent is not None:
+                x.extract()
+            p.append(x)
+        anchor.insert_before(p)
+
+    # Only act when there are actual loose text/inline nodes at root level.
+    # If all content is already in block elements, skip entirely.
+    has_loose = any(
+        isinstance(c, NavigableString) and str(c).strip()
+        or (hasattr(c, "name") and c.name in _WRAP_INLINE)
+        for c in root.children
+    )
+    if not has_loose:
+        return
+
+    sentinel = Tag(name="div")
+    sentinel["data-sentinel"] = "1"
+    root.append(sentinel)
+
+    acc: list = []
+    for child in list(root.children):
+        if child is sentinel:
+            _flush(acc, sentinel)
+            acc = []
+            continue
+        if isinstance(child, NavigableString):
+            acc.append(child)
+        elif hasattr(child, "name"):
+            if child.name == "br":
+                _flush(acc, child)
+                acc = []
+                child.extract()
+            elif child.name in _WRAP_INLINE:
+                acc.append(child)
+            else:
+                # Block element — flush pending buffer before it
+                _flush(acc, child)
+                acc = []
+
+    sentinel.extract()
+
+
 _DOUBLE_SPACE_RE = re.compile(r'  +')
 # Word/Office conditional comments pasted into blog posts (<!--[if mso]>...<![endif]-->)
 _MSO_COMMENT_RE = re.compile(r'<!--\[if [^\]]+\]>.*?<!\[endif\]-->', re.DOTALL | re.IGNORECASE)
@@ -605,6 +677,9 @@ def _clean_content(html: str) -> str:
     for div in root.find_all("div"):
         if _div_is_paragraph(div):
             div.name = "p"
+
+    # Old Blogger: bare text + <br> at body level — wrap into <p> tags
+    _wrap_loose_paragraphs(root)
 
     # Move every <img> into its own <p> block — must run before empty-node cleanup
     _isolate_images(root)
