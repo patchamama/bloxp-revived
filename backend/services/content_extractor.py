@@ -82,7 +82,7 @@ def _extract_with_selector(html: str) -> str | None:
         container: Tag | None = None
         for selector in _ARTICLE_SELECTORS:
             found = soup.select_one(selector)
-            if found and len(found.get_text(strip=True)) > 200:
+            if found and (found.find("img") or len(found.get_text(strip=True)) > 50):
                 container = found  # type: ignore[assignment]
                 break
 

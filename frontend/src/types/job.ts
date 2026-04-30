@@ -13,4 +13,5 @@ export interface JobStatusResponse {
   ebook_title?: string
   images_found: number
   images_embedded: number
+  queue_position?: number
 }

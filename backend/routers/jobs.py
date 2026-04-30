@@ -3,8 +3,8 @@ from typing import Any, Literal, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from models.job import JobStatusResponse
-from tasks.process_blog import create_job, get_state, process_basic, process_advanced
+from models.job import JobStatus, JobStatusResponse
+from tasks.process_blog import create_job, get_state, submit_job, get_queue_position
 
 router = APIRouter()
 
@@ -41,7 +41,7 @@ def create_job_endpoint(req: JobCreateRequest) -> dict:
             "add_toc": req.add_toc,
             "include_images": req.include_images,
         }
-        process_basic.delay(state.job_id, payload)
+        submit_job(state.job_id, "basic", payload)
     else:
         for field, val in [
             ("starting_url", req.starting_url),
@@ -63,7 +63,7 @@ def create_job_endpoint(req: JobCreateRequest) -> dict:
             "max_posts": req.max_posts,
             "custom_selector": req.custom_selector,
         }
-        process_advanced.delay(state.job_id, payload)
+        submit_job(state.job_id, "advanced", payload)
 
     return {"job_id": state.job_id}
 
@@ -73,6 +73,10 @@ def get_job_status(job_id: str) -> JobStatusResponse:
     state = get_state(job_id)
     if not state:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    queue_position = (
+        get_queue_position(state.job_id) if state.status == JobStatus.queued else None
+    )
 
     return JobStatusResponse(
         job_id=state.job_id,
@@ -87,4 +91,5 @@ def get_job_status(job_id: str) -> JobStatusResponse:
         ebook_title=state.ebook_title,
         images_found=state.images_found,
         images_embedded=state.images_embedded,
+        queue_position=queue_position,
     )

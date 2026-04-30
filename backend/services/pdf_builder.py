@@ -28,10 +28,10 @@ ul, ol { margin: 0.5em 0 0.5em 1.5em; padding: 0; }
 .post-date { font-size: 0.8em !important; text-align: right; color: #666;
              margin: -0.3em 0 1.2em; font-style: italic; }
 .quoted-para { font-size: 0.875em !important; }
-.verse-block { margin: 1em 0 1em 2em; text-align: left; }
+.verse-block { margin: 1em 0 1em 2em; text-align: left; line-height: 1.3 !important; }
 p.verse-block { text-indent: 0; }
-.verse-block p { margin: 0; text-indent: 0; text-align: left; }
-.verse-stanza { margin: 0.6em 0; }
+.verse-block p { margin: 0; text-indent: 0; text-align: left; line-height: 1.3 !important; }
+.verse-block p.verse-stanza { margin: 0.7em 0 !important; }
 .footnote-ref { font-size: 0.75em !important; vertical-align: super; text-decoration: none; }
 ul.footnotes { font-size: 0.9em !important; margin-top: 1em; }
 """

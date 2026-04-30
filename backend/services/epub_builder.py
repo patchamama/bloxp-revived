@@ -133,6 +133,9 @@ def _embed_images(
                 img_tag.decompose()
                 continue
             raw, mime = result
+            if not mime.startswith("image/"):
+                img_tag.decompose()
+                continue
             data, mime = _to_epub_image(raw, mime)
             if image_cache is not None:
                 image_cache[abs_url] = (data, mime)
@@ -233,11 +236,20 @@ def _is_image_url(url: str) -> bool:
 
 
 def _expand_image_links(root) -> None:
-    """Replace <a href="image.jpg">...</a> with <img src="image.jpg"> inline."""
+    """Handle <a href="image-url"> links.
+
+    - <a href="img.jpg"><img src="thumb.jpg"></a> → unwrap, keep existing <img> (avoid
+      fetching a potentially inaccessible full-res URL when the thumbnail already works).
+    - <a href="img.jpg">text or nothing</a> → <img src="img.jpg">
+    """
     from bs4 import Tag
     for a in list(root.find_all("a", href=True)):
         href = a.get("href", "").strip()
         if not href or not _is_image_url(href):
+            continue
+        inner_img = a.find("img")
+        if inner_img:
+            a.replace_with(inner_img)
             continue
         img = Tag(name="img")
         img["src"] = href
@@ -467,10 +479,16 @@ def _detect_verse_blocks(root, soup) -> None:
         wrapper = soup.new_tag("div")
         wrapper["class"] = ["verse-block"]
         run[0].insert_before(wrapper)
+        prev_was_stanza = False
         for el in run:
             seen.add(id(el))
-            if not el.get_text(strip=True):
+            is_empty = not el.get_text(strip=True)
+            if is_empty:
+                if prev_was_stanza:
+                    el.extract()  # collapse consecutive blank-p separators into one
+                    continue
                 _add_class(el, "verse-stanza")
+            prev_was_stanza = is_empty
             wrapper.append(el.extract())
 
 
@@ -526,6 +544,8 @@ def _clean_content(html: str) -> str:
 
     # Remove empty <p> and <div> — but preserve verse stanza separators
     for tag in root.find_all(["p", "div"]):
+        if tag.parent is None:  # already decomposed as child of a decomposed parent
+            continue
         if "verse-stanza" in (tag.get("class") or []):
             continue
         if not tag.get_text(strip=True) and not tag.find(["img", "figure"]):
@@ -584,18 +604,21 @@ h3, h4, h5, h6 { font-size: 1.1em !important; }
 }
 /* Quoted paragraph (starts and ends with quote mark, no internal quotes) */
 .quoted-para { font-size: 0.875em !important; }
-/* Verse blocks */
+/* Verse blocks — tight line-height, override body 1.7 */
 .verse-block {
     margin: 1em 0 1em 2em;
     text-align: left;
+    line-height: 1.3 !important;
 }
 p.verse-block { text-indent: 0; }
 .verse-block p {
     margin: 0;
     text-indent: 0;
     text-align: left;
+    line-height: 1.3 !important;
 }
-.verse-stanza { margin: 0.6em 0; }
+/* Stanza separator: visible gap between stanzas */
+.verse-block p.verse-stanza { margin: 0.7em 0 !important; }
 /* Footnote reference superscripts */
 .footnote-ref {
     font-size: 0.75em !important;
@@ -686,23 +709,29 @@ def build_epub(
     return output_path, image_cache, processed_contents
 
 
+_BARE_REF_RE = re.compile(r'^\s*\[\d+\]\s*$')
+
+
 def _convert_links_to_footnotes(html: str) -> str:
     from bs4 import NavigableString
     soup = BeautifulSoup(html, "lxml")
+    body = soup.find("body")
+    root = body if body else soup
     footnotes: list[tuple[int, str]] = []
 
-    for i, a in enumerate(soup.find_all("a", href=True), 1):
+    for i, a in enumerate(root.find_all("a", href=True), 1):
         href = a["href"]
         link_text = a.get_text()
 
-        # Build: link_text<sup><a href="#ref-N" class="footnote-ref">[N]</a></sup>
         ref_sup = soup.new_tag("sup")
         ref_a = soup.new_tag("a", href=f"#ref-{i}")
         ref_a["class"] = "footnote-ref"
         ref_a.string = f"[{i}]"
         ref_sup.append(ref_a)
 
-        a.insert_before(NavigableString(link_text))
+        # Don't re-insert link_text when it's already a bare [N] marker — avoids "[7] [7]"
+        if link_text and not _BARE_REF_RE.match(link_text):
+            a.insert_before(NavigableString(link_text))
         a.replace_with(ref_sup)
         ref_sup.insert_after(NavigableString(" "))
 
@@ -713,7 +742,9 @@ def _convert_links_to_footnotes(html: str) -> str:
             f'<li id="ref-{n}">[{n}] <a href="{href}">{href}</a></li>'
             for n, href in footnotes
         )
-        fn_html = f'<hr/><ul class="footnotes">{items}</ul>'
-        soup.append(BeautifulSoup(fn_html, "lxml"))
+        fn_soup = BeautifulSoup(f'<hr/><ul class="footnotes">{items}</ul>', "lxml")
+        fn_body = fn_soup.find("body")
+        for child in list((fn_body or fn_soup).children):
+            root.append(child)
 
-    return str(soup)
+    return root.decode_contents() if body else str(root)

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import re
 import time
 import uuid
@@ -21,6 +22,10 @@ from storage.file_manager import epub_path, mobi_path, pdf_path
 from tasks.celery_app import celery_app
 
 _redis = redis_lib.from_url(settings.redis_url)
+
+# ── Job queue keys ────────────────────────────────────────────────────────────
+_ACTIVE_KEY = "bloxp:active"    # SET  — job IDs currently being processed
+_QUEUE_KEY  = "bloxp:pending"   # LIST — JSON {job_id, task, payload} waiting for a slot
 
 
 def _save_state(state: JobState) -> None:
@@ -47,6 +52,71 @@ def create_job() -> JobState:
     )
     _save_state(state)
     return state
+
+
+# ── Queue management ──────────────────────────────────────────────────────────
+
+def _decode(v) -> str:
+    return v.decode() if isinstance(v, bytes) else v
+
+
+def _active_count() -> int:
+    """Count active jobs, pruning stale entries (crashed workers)."""
+    members = _redis.smembers(_ACTIVE_KEY)
+    stale = []
+    active = 0
+    for m in members:
+        jid = _decode(m)
+        state = get_state(jid)
+        if state and state.status not in (JobStatus.done, JobStatus.error):
+            active += 1
+        else:
+            stale.append(m)
+    if stale:
+        _redis.srem(_ACTIVE_KEY, *stale)
+    return active
+
+
+def get_queue_position(job_id: str) -> int:
+    """Return 1-based position in the pending queue, 0 if not waiting."""
+    for i, raw in enumerate(_redis.lrange(_QUEUE_KEY, 0, -1)):
+        entry = json.loads(_decode(raw))
+        if entry["job_id"] == job_id:
+            return i + 1
+    return 0
+
+
+def _launch(task: str, job_id: str, payload: dict) -> None:
+    if task == "basic":
+        process_basic.apply_async(args=[job_id, payload])
+    else:
+        process_advanced.apply_async(args=[job_id, payload])
+
+
+def submit_job(job_id: str, task: str, payload: dict) -> None:
+    """Start immediately if under the concurrency limit, otherwise enqueue."""
+    if _active_count() < settings.max_concurrent_jobs:
+        _redis.sadd(_ACTIVE_KEY, job_id)
+        _launch(task, job_id, payload)
+    else:
+        _redis.rpush(_QUEUE_KEY, json.dumps({"job_id": job_id, "task": task, "payload": payload}))
+
+
+def _finish_job(job_id: str) -> None:
+    """Free the active slot and start the next queued job if one exists."""
+    _redis.srem(_ACTIVE_KEY, job_id)
+    # Pop entries until we find a still-valid job or the queue is empty
+    while True:
+        raw = _redis.lpop(_QUEUE_KEY)
+        if not raw:
+            break
+        entry = json.loads(_decode(raw))
+        next_id = entry["job_id"]
+        if get_state(next_id):
+            _redis.sadd(_ACTIVE_KEY, next_id)
+            _launch(entry["task"], next_id, entry["payload"])
+            break
+        # entry expired — skip and try next
 
 
 def _extract_max_posts(url: str) -> tuple[str, int]:
@@ -87,6 +157,7 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
     req = BasicJobRequest(**payload)
     state = get_state(job_id)
     if not state:
+        _finish_job(job_id)
         return
 
     try:
@@ -126,6 +197,8 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
         state.error_message = str(exc)
         _save_state(state)
         raise
+    finally:
+        _finish_job(job_id)
 
 
 @celery_app.task(bind=True)
@@ -133,6 +206,7 @@ def process_advanced(self, job_id: str, payload: dict[str, Any]) -> None:
     req = AdvancedJobRequest(**payload)
     state = get_state(job_id)
     if not state:
+        _finish_job(job_id)
         return
 
     try:
@@ -170,6 +244,8 @@ def process_advanced(self, job_id: str, payload: dict[str, Any]) -> None:
         state.error_message = str(exc)
         _save_state(state)
         raise
+    finally:
+        _finish_job(job_id)
 
 
 def _generate_ebooks(

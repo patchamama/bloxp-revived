@@ -54,8 +54,17 @@ export function WorkingPage() {
     <main className="max-w-2xl mx-auto px-4 py-16 space-y-8">
       <div className="space-y-1">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          {STATUS_MESSAGES[data.status]}
+          {data.status === 'queued' && data.queue_position && data.queue_position > 0
+            ? `Position ${data.queue_position} in queue…`
+            : STATUS_MESSAGES[data.status]}
         </h1>
+        {data.status === 'queued' && data.queue_position && data.queue_position > 0 && (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {data.queue_position === 1
+              ? 'You're next — processing will start soon.'
+              : `${data.queue_position - 1} job${data.queue_position - 1 > 1 ? 's' : ''} ahead of you.`}
+          </p>
+        )}
         {data.status === 'crawling' && data.posts_found > 0 && (
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {data.posts_crawled} / {data.posts_found} posts crawled

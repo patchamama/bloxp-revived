@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_pass: str = ""
     job_ttl_seconds: int = 86400  # 24h
+    max_concurrent_jobs: int = 2
 
     class Config:
         env_file = ".env"

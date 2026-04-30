@@ -42,3 +42,4 @@ class JobStatusResponse(BaseModel):
     has_mobi: bool = False
     has_pdf: bool = False
     ebook_title: Optional[str] = None
+    queue_position: Optional[int] = None
