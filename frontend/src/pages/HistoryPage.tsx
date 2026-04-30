@@ -27,6 +27,13 @@ function JobRow({ entry, onRemove }: { entry: HistoryEntry; onRemove: () => void
       <td className="py-3 px-4">
         <StatusBadge status={data?.status} isError={isError} />
       </td>
+      <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
+        {data?.status === 'done' && data.posts_crawled > 0
+          ? data.posts_crawled
+          : data?.status === 'done'
+          ? '—'
+          : null}
+      </td>
       <td className="py-3 px-4">
         {data?.status === 'done' ? (
           <div className="flex gap-2 flex-wrap">
@@ -157,6 +164,7 @@ export function HistoryPage() {
               <tr>
                 <th className="py-2.5 px-4">Blog / Feed</th>
                 <th className="py-2.5 px-4">Status</th>
+                <th className="py-2.5 px-4">Posts</th>
                 <th className="py-2.5 px-4">Downloads</th>
                 <th className="py-2.5 px-4"></th>
               </tr>

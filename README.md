@@ -156,28 +156,61 @@ Open **http://localhost:5173**
 
 **Prerequisites:** Node.js ≥ 18, Python ≥ 3.11, Redis
 
+#### macOS
+
 ```bash
-# macOS
 brew install redis node python
 brew services start redis
 
-# Clone
 git clone https://github.com/patchamama/bloxp-revived.git
 cd bloxp-revived
-
-# Build + deploy (single command)
 chmod +x deploy.sh
 ./deploy.sh
 ```
 
-Open **http://localhost:8000**
+#### Ubuntu / Debian Linux
 
-To stop all services:
+Redis is installed automatically by `deploy.sh` if it is not present (requires `sudo`).
+
+```bash
+# Install Node.js and Python if needed
+sudo apt-get update
+sudo apt-get install -y nodejs npm python3 python3-venv python3-pip
+
+git clone https://github.com/patchamama/bloxp-revived.git
+cd bloxp-revived
+chmod +x deploy.sh
+./deploy.sh
+```
+
+> **Note:** The first run may ask for your `sudo` password to install and start Redis.
+
+#### Windows
+
+Requires one of the following for Redis (in order of preference):
+
+- **[Memurai](https://www.memurai.com)** — Redis-compatible server native to Windows (recommended)
+- **WSL2** — `wsl sudo apt install redis-server && wsl sudo service redis-server start`
+- **Docker Desktop** — started automatically by the script if available
+
+```bat
+git clone https://github.com/patchamama/bloxp-revived.git
+cd bloxp-revived
+deploy.bat
+```
+
+> **Note:** On Windows, Celery uses the `solo` pool (`-P solo`) and uvicorn runs with a single worker because Windows does not support `fork()`.
+
+---
+
+Open **http://localhost:8000** (or **http://localhost:8001** on WSL2 if port 8000 is reserved by Hyper-V).
+
+To stop all services (Linux / macOS):
 ```bash
 ./stop.sh
 ```
 
-#### deploy.sh flags
+#### deploy.sh / deploy.bat flags
 
 | Flag | Description |
 |------|-------------|

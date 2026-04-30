@@ -187,6 +187,8 @@ def _generate_ebooks(
         _save_state(state)
         return
 
+    # Authoritative count of posts that made it into the ebook
+    state.posts_crawled = len(posts)
     state.status = JobStatus.generating
     state.progress = 75
     state.ebook_title = _slugify(title)

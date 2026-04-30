@@ -80,10 +80,16 @@ def _ext_for_mime(mime: str) -> str:
 
 
 # Blogger/WordPress UI noise — not article content
+# Use leading slash so "/s16/" only matches a complete path segment, not a hash like "AAAAAAAAs16/"
 _SKIP_URL_FRAGMENTS = (
     "icon18_email", "icon18_edit", "blank.gif", "favicon",
-    "s16/", "s24/", "s28/", "s32/",
+    "/s16/", "/s24/", "/s28/", "/s32/",
 )
+
+# Lazy-load placeholder src values used by many CMS templates
+_LAZY_PLACEHOLDERS = {"", "//:0", "about:blank", "#", "data:,"}
+# Attributes that hold the real image URL in lazy-loaded content
+_LAZY_SRC_ATTRS = ("data-src", "data-original-src", "data-lazy-src", "data-orig", "data-url")
 
 
 def _embed_images(
@@ -102,7 +108,14 @@ def _embed_images(
 
     for img_tag in soup.find_all("img"):
         src = img_tag.get("src", "").strip()
-        if not src or src.startswith("data:"):
+        # Resolve lazy-loaded images: prefer data-src over placeholder src
+        if src in _LAZY_PLACEHOLDERS:
+            for attr in _LAZY_SRC_ATTRS:
+                fallback = img_tag.get(attr, "").strip()
+                if fallback and fallback not in _LAZY_PLACEHOLDERS:
+                    src = fallback
+                    break
+        if not src or src in _LAZY_PLACEHOLDERS or src.startswith("data:"):
             img_tag.decompose()
             continue
 
@@ -325,6 +338,167 @@ def _isolate_images(root) -> None:
             parent.decompose()
 
 
+# ── Date formatting ──────────────────────────────────────────────────────────
+
+_MONTHS_ES = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+]
+
+
+def _fmt_date(iso_date: str) -> str:
+    """Format ISO date (YYYY-MM-DD) to Spanish long form."""
+    try:
+        y, m, d = iso_date.split("-")
+        return f"{int(d)} de {_MONTHS_ES[int(m) - 1]} de {y}"
+    except Exception:
+        return iso_date
+
+
+# ── Verse detection ───────────────────────────────────────────────────────────
+
+_SENTENCE_ENDING = re.compile(r'[.!?]["»”)]*\s*$')
+
+
+def _is_verse_line(text: str) -> bool:
+    text = text.strip()
+    return bool(text) and len(text) <= 120 and not _SENTENCE_ENDING.search(text)
+
+
+def _add_class(tag, cls: str) -> None:
+    existing = tag.get("class") or []
+    if isinstance(existing, str):
+        existing = [existing]
+    if cls not in existing:
+        tag["class"] = existing + [cls]
+
+
+def _split_br_lines(tag) -> list[str]:
+    """Return text segments separated by <br> tags anywhere inside tag."""
+    from bs4 import NavigableString
+    segments: list[str] = []
+    current: list[str] = []
+
+    def walk(node) -> None:
+        if isinstance(node, NavigableString):
+            current.append(str(node))
+        elif hasattr(node, "name"):
+            if node.name == "br":
+                segments.append("".join(current).strip())
+                current.clear()
+            else:
+                for child in node.children:
+                    walk(child)
+
+    for child in tag.children:
+        walk(child)
+    segments.append("".join(current).strip())
+    return segments
+
+
+def _detect_verse_blocks(root, soup) -> None:
+    """Mark verse content with class 'verse-block'.
+
+    Case 1 — element with 3+ <br> where majority of lines are verse-like.
+    Case 2 — sequence of 4+ consecutive <p> that are short and mostly verse-like.
+    """
+    from bs4 import NavigableString
+
+    # Case 1: <br>-based verse in a single element
+    for tag in root.find_all(["p", "div", "blockquote"]):
+        if len(tag.find_all("br")) < 3:
+            continue
+        lines = _split_br_lines(tag)
+        non_empty = [l for l in lines if l]
+        if len(non_empty) < 3:
+            continue
+        verse_ratio = sum(1 for l in non_empty if _is_verse_line(l)) / len(non_empty)
+        if verse_ratio <= 0.55:
+            continue
+        _add_class(tag, "verse-block")
+        # Collapse 3+ consecutive <br> down to 2 (max one blank stanza line)
+        br_run = 0
+        for child in list(tag.descendants):
+            if hasattr(child, "name") and child.name == "br":
+                br_run += 1
+                if br_run > 2:
+                    child.decompose()
+            else:
+                if isinstance(child, NavigableString) and not child.strip():
+                    continue
+                br_run = 0
+
+    # Case 2: run of 4+ consecutive short verse-like <p> elements
+    seen: set[int] = set()
+    for p in list(root.find_all("p")):
+        if id(p) in seen:
+            continue
+        if p.find_parent(class_="verse-block"):
+            continue
+
+        # Collect the run: consecutive <p> (skip pure-whitespace NavigableStrings)
+        run: list = [p]
+        node = p.next_sibling
+        while node is not None:
+            if isinstance(node, NavigableString) and not node.strip():
+                node = node.next_sibling
+                continue
+            if hasattr(node, "name") and node.name == "p":
+                run.append(node)
+                node = node.next_sibling
+            else:
+                break
+
+        if len(run) < 4:
+            continue
+
+        texts = [el.get_text(strip=True) for el in run]
+        non_empty_texts = [t for t in texts if t]
+        if not non_empty_texts:
+            continue
+        avg_len = sum(len(t) for t in non_empty_texts) / len(non_empty_texts)
+        if avg_len > 100:
+            continue
+        verse_ratio = sum(1 for t in non_empty_texts if _is_verse_line(t)) / len(non_empty_texts)
+        if verse_ratio < 0.6:
+            continue
+
+        # Wrap the run in a verse-block div
+        wrapper = soup.new_tag("div")
+        wrapper["class"] = ["verse-block"]
+        run[0].insert_before(wrapper)
+        for el in run:
+            seen.add(id(el))
+            if not el.get_text(strip=True):
+                _add_class(el, "verse-stanza")
+            wrapper.append(el.extract())
+
+
+# ── Quoted-paragraph detection ────────────────────────────────────────────────
+
+_OPEN_QUOTES = '"«“'
+_CLOSE_QUOTE_RE = re.compile(r'["”»]\.?$')
+_INNER_QUOTE_RE = re.compile(r'["“”«»]')
+
+
+def _mark_quoted_paragraphs(root) -> None:
+    """Add class 'quoted-para' to paragraphs that are a single uninterrupted quoted passage."""
+    for p in root.find_all("p"):
+        text = p.get_text(strip=True)
+        if not text or text[0] not in _OPEN_QUOTES:
+            continue
+        if not _CLOSE_QUOTE_RE.search(text):
+            continue
+        # No internal quote marks (would indicate dialog, not a single quote block)
+        inner = text[1:-1]
+        if _INNER_QUOTE_RE.search(inner):
+            continue
+        _add_class(p, "quoted-para")
+
+
+# ── Main HTML normalizer ──────────────────────────────────────────────────────
+
+
 def _clean_content(html: str) -> str:
     """Normalize HTML for epub: convert text-only divs to <p>, remove empty paragraphs."""
     # Strip Word/Office conditional comments and XML blobs before parsing
@@ -347,8 +521,13 @@ def _clean_content(html: str) -> str:
     # Move every <img> into its own <p> block — must run before empty-node cleanup
     _isolate_images(root)
 
-    # Remove empty <p> and <div> (only whitespace / <br>)
+    # Detect verse blocks BEFORE empty-node cleanup so stanza-separator <p>s survive
+    _detect_verse_blocks(root, soup)
+
+    # Remove empty <p> and <div> — but preserve verse stanza separators
     for tag in root.find_all(["p", "div"]):
+        if "verse-stanza" in (tag.get("class") or []):
+            continue
         if not tag.get_text(strip=True) and not tag.find(["img", "figure"]):
             tag.decompose()
 
@@ -356,6 +535,7 @@ def _clean_content(html: str) -> str:
     _linkify_text_nodes(root)
     _fix_reference_spacing(root)
     _collapse_double_spaces(root)
+    _mark_quoted_paragraphs(root)
 
     return root.decode_contents() if body else str(root)
 
@@ -394,6 +574,35 @@ ul, ol { margin: 0.5em 0 0.5em 1.5em; padding: 0; }
 h1 { font-size: 1.6em !important; }
 h2 { font-size: 1.3em !important; }
 h3, h4, h5, h6 { font-size: 1.1em !important; }
+/* Post date line */
+.post-date {
+    font-size: 0.8em !important;
+    text-align: right;
+    color: #666;
+    margin: -0.3em 0 1.2em;
+    font-style: italic;
+}
+/* Quoted paragraph (starts and ends with quote mark, no internal quotes) */
+.quoted-para { font-size: 0.875em !important; }
+/* Verse blocks */
+.verse-block {
+    margin: 1em 0 1em 2em;
+    text-align: left;
+}
+p.verse-block { text-indent: 0; }
+.verse-block p {
+    margin: 0;
+    text-indent: 0;
+    text-align: left;
+}
+.verse-stanza { margin: 0.6em 0; }
+/* Footnote reference superscripts */
+.footnote-ref {
+    font-size: 0.75em !important;
+    vertical-align: super;
+    text-decoration: none;
+}
+ul.footnotes { font-size: 0.9em !important; margin-top: 1em; }
 """
 
 
@@ -455,7 +664,8 @@ def build_epub(
             lang="es",
         )
         chapter.add_link(href="../style/main.css", rel="stylesheet", type="text/css")
-        chapter.content = f"<h1>{post.title}</h1>{content}"
+        date_html = f'<p class="post-date">{_fmt_date(post.date)}</p>' if post.date else ""
+        chapter.content = f"<h1>{post.title}</h1>{date_html}{content}"
         book.add_item(chapter)
         chapters.append(chapter)
 
@@ -477,20 +687,33 @@ def build_epub(
 
 
 def _convert_links_to_footnotes(html: str) -> str:
+    from bs4 import NavigableString
     soup = BeautifulSoup(html, "lxml")
     footnotes: list[tuple[int, str]] = []
 
     for i, a in enumerate(soup.find_all("a", href=True), 1):
         href = a["href"]
-        a.replace_with(f"{a.get_text()}[{i}] ")
+        link_text = a.get_text()
+
+        # Build: link_text<sup><a href="#ref-N" class="footnote-ref">[N]</a></sup>
+        ref_sup = soup.new_tag("sup")
+        ref_a = soup.new_tag("a", href=f"#ref-{i}")
+        ref_a["class"] = "footnote-ref"
+        ref_a.string = f"[{i}]"
+        ref_sup.append(ref_a)
+
+        a.insert_before(NavigableString(link_text))
+        a.replace_with(ref_sup)
+        ref_sup.insert_after(NavigableString(" "))
+
         footnotes.append((i, href))
 
     if footnotes:
         items = "".join(
-            f'<li>[{n}] <a href="{href}">{href}</a></li>'
+            f'<li id="ref-{n}">[{n}] <a href="{href}">{href}</a></li>'
             for n, href in footnotes
         )
-        fn_html = f"<hr/><ul>{items}</ul>"
+        fn_html = f'<hr/><ul class="footnotes">{items}</ul>'
         soup.append(BeautifulSoup(fn_html, "lxml"))
 
     return str(soup)

@@ -4,6 +4,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 from services.crawler import Post
+from services.epub_builder import _fmt_date
 
 _CSS = """
 body { font-family: Georgia, serif; font-size: 11pt; line-height: 1.7; margin: 2cm; color: #111; }
@@ -24,6 +25,15 @@ figure img, p.img-block img, img { display: block !important; max-width: 66% !im
 hr { margin: 1.5em 0; }
 ul, ol { margin: 0.5em 0 0.5em 1.5em; padding: 0; }
 * { font-size: inherit; }
+.post-date { font-size: 0.8em !important; text-align: right; color: #666;
+             margin: -0.3em 0 1.2em; font-style: italic; }
+.quoted-para { font-size: 0.875em !important; }
+.verse-block { margin: 1em 0 1em 2em; text-align: left; }
+p.verse-block { text-indent: 0; }
+.verse-block p { margin: 0; text-indent: 0; text-align: left; }
+.verse-stanza { margin: 0.6em 0; }
+.footnote-ref { font-size: 0.75em !important; vertical-align: super; text-decoration: none; }
+ul.footnotes { font-size: 0.9em !important; margin-top: 1em; }
 """
 
 _BLOCK_TAGS = {"address", "article", "aside", "blockquote", "canvas", "dd", "div",
@@ -99,10 +109,12 @@ def build_pdf(
     cache = image_cache or {}
     contents = processed_contents or [None] * len(posts)
 
-    chapters = "".join(
-        f"<h1>{p.title}</h1>{_clean_for_pdf(html or p.content or '<p>No content</p>', p.url, cache)}"
-        for p, html in zip(posts, contents)
-    )
+    def _chapter(p: Post, html: str | None) -> str:
+        date_html = f'<p class="post-date">{_fmt_date(p.date)}</p>' if p.date else ""
+        body = _clean_for_pdf(html or p.content or "<p>No content</p>", p.url, cache)
+        return f"<h1>{p.title}</h1>{date_html}{body}"
+
+    chapters = "".join(_chapter(p, html) for p, html in zip(posts, contents))
 
     html_content = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>{title}</title></head>
