@@ -79,7 +79,9 @@ def _clean_for_pdf(content: str, post_url: str, image_cache: dict) -> str:
         else:
             img.decompose()
 
-    for tag in root.find_all(["figure", "div"]):
+    for tag in root.find_all(["figure", "div", "p"]):
+        if tag.parent is None:
+            continue
         if not tag.get_text(strip=True) and not tag.find("img"):
             tag.decompose()
     for div in root.find_all("div"):

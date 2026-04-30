@@ -25,9 +25,12 @@ _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".avif", 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; Bloxp/2.0; +https://bloxp.app)"}
 
 
-def _fetch_image(url: str) -> tuple[bytes, str] | None:
+def _fetch_image(url: str, referer: str = "") -> tuple[bytes, str] | None:
+    headers = {**HEADERS}
+    if referer:
+        headers["Referer"] = referer
     try:
-        r = httpx.get(url, headers=HEADERS, timeout=15, follow_redirects=True)
+        r = httpx.get(url, headers=headers, timeout=15, follow_redirects=True)
         r.raise_for_status()
         mime = r.headers.get("content-type", "").split(";")[0].strip().lower() or "image/jpeg"
         return r.content, mime
@@ -130,7 +133,7 @@ def _embed_images(
         if image_cache is not None and abs_url in image_cache:
             data, mime = image_cache[abs_url]
         else:
-            result = _fetch_image(abs_url)
+            result = _fetch_image(abs_url, referer=post_url)
             if not result:
                 _decompose_with_wrapper(img_tag)
                 continue
@@ -177,6 +180,14 @@ def _embed_images(
             img_tag["style"] = "min-width:33%;width:auto;max-width:66%;height:auto;display:block;margin:0.5em auto"
         else:
             img_tag["style"] = "width:auto;height:auto;max-width:66%;display:block;margin:0.5em auto"
+
+    # Remove any empty wrappers left behind by failed image fetches
+    root = soup.body if soup.body else soup
+    for tag in root.find_all(["p", "div", "figure"]):
+        if tag.parent is None:
+            continue
+        if not tag.get_text(strip=True) and not tag.find("img"):
+            tag.decompose()
 
     return soup.body.decode_contents() if soup.body else str(soup)
 
