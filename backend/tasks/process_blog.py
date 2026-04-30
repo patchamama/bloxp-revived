@@ -210,8 +210,10 @@ def _generate_ebooks(
         _save_state(state)
 
     ep = epub_path(state.job_id)
-    build_epub(posts, title, description, ep, add_toc, links_to_footnotes, include_images,
-               on_image=on_image if include_images else None)
+    _, image_cache, processed_contents = build_epub(
+        posts, title, description, ep, add_toc, links_to_footnotes, include_images,
+        on_image=on_image if include_images else None,
+    )
     state.epub_path = str(ep)
     state.progress = 85
     _save_state(state)
@@ -224,7 +226,11 @@ def _generate_ebooks(
     _save_state(state)
 
     pp = pdf_path(state.job_id)
-    build_pdf(posts, title, pp)
+    build_pdf(
+        posts, title, pp,
+        image_cache=image_cache if include_images else None,
+        processed_contents=processed_contents if include_images else None,
+    )
     state.pdf_path = str(pp)
 
     state.status = JobStatus.done

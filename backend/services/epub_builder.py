@@ -248,6 +248,11 @@ def _div_is_paragraph(tag) -> bool:
 
 
 _DOUBLE_SPACE_RE = re.compile(r'  +')
+# Word/Office conditional comments pasted into blog posts (<!--[if mso]>...<![endif]-->)
+_MSO_COMMENT_RE = re.compile(r'<!--\[if [^\]]+\]>.*?<!\[endif\]-->', re.DOTALL | re.IGNORECASE)
+# Naked XML blobs that survive comment stripping
+_MSO_XML_RE = re.compile(r'<xml\b[^>]*>.*?</xml>', re.DOTALL | re.IGNORECASE)
+_MSO_STYLE_RE = re.compile(r'<style\b[^>]*>.*?</style>', re.DOTALL | re.IGNORECASE)
 
 
 def _strip_inline_styles(root) -> None:
@@ -267,8 +272,55 @@ def _collapse_double_spaces(root) -> None:
             node.replace_with(_DOUBLE_SPACE_RE.sub(" ", str(node)))
 
 
+def _isolate_images(root) -> None:
+    """Ensure every <img> lives alone in its own <p>, centered, with no sibling text.
+
+    Strategy: for each <img> found anywhere in the tree, if its immediate parent
+    contains other content (text or elements), extract the <img> and insert a
+    standalone <p><img></p> block right before the parent.  Then clean up the
+    parent if it becomes empty.
+    """
+    from bs4 import NavigableString, Tag
+
+    for img in list(root.find_all("img")):
+        parent = img.parent
+        if parent is None:
+            continue
+
+        # Already the sole child of a block-level wrapper → just rename to <p>
+        siblings = [c for c in parent.children
+                    if not (isinstance(c, NavigableString) and not c.strip())]
+        if len(siblings) == 1 and siblings[0] is img:
+            if parent.name not in ("body", "html", "[document]"):
+                parent.name = "p"
+            continue
+
+        # Extract <img> from its parent and insert a <p><img></p> before the parent
+        img.extract()
+        wrapper = Tag(name="p")
+        wrapper["class"] = ["img-block"]
+        wrapper.append(img)
+
+        # Find the nearest block ancestor to insert next to
+        anchor = parent
+        while anchor.parent and anchor.parent.name in ("a", "span", "em", "strong",
+                                                        "b", "i", "u", "small", "sup", "sub"):
+            anchor = anchor.parent
+
+        anchor.insert_before(wrapper)
+
+        # Remove parent if it is now empty (only whitespace left)
+        if not parent.get_text(strip=True) and not parent.find(["img", "figure"]):
+            parent.decompose()
+
+
 def _clean_content(html: str) -> str:
     """Normalize HTML for epub: convert text-only divs to <p>, remove empty paragraphs."""
+    # Strip Word/Office conditional comments and XML blobs before parsing
+    html = _MSO_COMMENT_RE.sub("", html)
+    html = _MSO_XML_RE.sub("", html)
+    html = _MSO_STYLE_RE.sub("", html)
+
     soup = BeautifulSoup(html, "lxml")
     body = soup.find("body")
     root = body if body else soup
@@ -276,20 +328,13 @@ def _clean_content(html: str) -> str:
     # Links whose href points to an image → convert to <img> so they get embedded
     _expand_image_links(root)
 
-    # Isolate images: unwrap <a> around <img>, convert image containers to <figure>
-    for div in root.find_all("div"):
-        img = div.find("img")
-        if img and not div.get_text(strip=True):
-            # Unwrap any <a> around the img
-            for a in div.find_all("a"):
-                if a.find("img"):
-                    a.unwrap()
-            div.name = "figure"
-
     # Convert inline-only <div> → <p> so readers don't break mid-sentence at block boundaries
     for div in root.find_all("div"):
         if _div_is_paragraph(div):
             div.name = "p"
+
+    # Move every <img> into its own <p> block — must run before empty-node cleanup
+    _isolate_images(root)
 
     # Remove empty <p> and <div> (only whitespace / <br>)
     for tag in root.find_all(["p", "div"]):
@@ -319,17 +364,17 @@ p  { font-size: 1em; margin: 0.5em 0; text-align: justify; }
 li { font-size: 1em; margin: 0.3em 0; }
 blockquote { font-size: 1em; margin: 1em 2em; font-style: italic; }
 a  { color: #1a0dab; text-decoration: underline; }
-figure {
+figure, p.img-block {
     display: block;
     text-align: center;
     margin: 1.5em auto;
-    width: 66%;
 }
-img {
+figure img, p.img-block img, img {
     display: block;
     max-width: 66%;
+    width: auto;
     height: auto;
-    margin: 1.5em auto;
+    margin: 0.5em auto;
 }
 hr { margin: 1.5em 0; border: none; border-top: 1px solid #ccc; }
 ul, ol { margin: 0.5em 0 0.5em 1.5em; padding: 0; }
@@ -350,8 +395,13 @@ def build_epub(
     links_to_footnotes: bool = False,
     include_images: bool = True,
     on_image: Callable[[int], None] | None = None,
-) -> tuple[Path, dict]:
-    """Returns (output_path, image_cache) where image_cache maps url -> (data, mime)."""
+) -> tuple[Path, dict, list[str]]:
+    """Returns (output_path, image_cache, processed_contents).
+
+    image_cache maps url/epub-path -> (data, mime).
+    processed_contents is the cleaned HTML body of each post (same order as posts),
+    with img src already rewritten to epub-relative paths — reuse in PDF to avoid re-downloading.
+    """
     book = epub.EpubBook()
     book.set_title(title)
     book.set_language("es")
@@ -369,6 +419,7 @@ def build_epub(
     chapters: list[epub.EpubHtml] = []
     img_counter = [0]
     image_cache: dict = {}
+    processed_contents: list[str] = []
 
     for i, post in enumerate(posts):
         content = post.content or "<p>No content</p>"
@@ -384,6 +435,8 @@ def build_epub(
 
         if links_to_footnotes:
             content = _convert_links_to_footnotes(content)
+
+        processed_contents.append(content)
 
         chapter = epub.EpubHtml(
             title=post.title,
@@ -409,7 +462,7 @@ def build_epub(
     book.spine = ["nav"] + chapters
 
     epub.write_epub(str(output_path), book)
-    return output_path, image_cache
+    return output_path, image_cache, processed_contents
 
 
 def _convert_links_to_footnotes(html: str) -> str:

@@ -1,6 +1,12 @@
+import re
+
 import trafilatura
 from bs4 import BeautifulSoup, Tag
 from readability import Document
+
+# Strip Word/Office conditional comments before HTML parsing
+_MSO_RE = re.compile(r'<!--\[if [^\]]+\]>.*?<!\[endif\]-->', re.DOTALL | re.IGNORECASE)
+_XML_BLOB_RE = re.compile(r'<xml\b[^>]*>.*?</xml>', re.DOTALL | re.IGNORECASE)
 
 # CSS selectors tried in order to locate the main article body
 _ARTICLE_SELECTORS = [
@@ -45,16 +51,26 @@ def extract_content(html: str, url: str = "", include_images: bool = True) -> tu
     # trafilatura: best text quality, images stripped
     text = trafilatura.extract(html, include_links=True, include_images=False, output_format="html")
     if text:
-        return title, text
+        soup = BeautifulSoup(text, "lxml")
+        body = soup.find("body")
+        return title, (body.decode_contents() if body else text)
 
     # Last resort
     content = _extract_with_readability(html)
     return title, content or "<p>No content</p>"
 
 
+def _strip_mso(html: str) -> str:
+    """Remove Word/Office conditional comments and XML blobs."""
+    html = _MSO_RE.sub("", html)
+    html = _XML_BLOB_RE.sub("", html)
+    return html
+
+
 def _extract_with_selector(html: str) -> str | None:
     """Find the article body using known CSS selectors, preserving images."""
     try:
+        html = _strip_mso(html)
         soup = BeautifulSoup(html, "lxml")
 
         container: Tag | None = None
@@ -85,7 +101,7 @@ def _extract_with_selector(html: str) -> str | None:
 
 def _extract_with_readability(html: str) -> str | None:
     try:
-        doc = Document(html)
+        doc = Document(_strip_mso(html))
         content = doc.summary()
         if not content or len(content) < 100:
             return None

@@ -7,23 +7,23 @@ from services.crawler import Post
 
 _CSS = """
 body { font-family: Georgia, serif; font-size: 11pt; line-height: 1.7; margin: 2cm; color: #111; }
-h1 { font-size: 1.6em; font-weight: bold; margin-top: 2em; margin-bottom: 0.6em;
+h1 { font-size: 1.6em !important; font-weight: bold; margin-top: 2em; margin-bottom: 0.6em;
      line-height: 1.3; page-break-before: always; }
 h1:first-child { page-break-before: avoid; }
-h2 { font-size: 1.3em; font-weight: bold; margin: 1em 0 0.4em; }
-h3, h4, h5, h6 { font-size: 1.1em; font-weight: bold; margin: 0.8em 0 0.3em; }
+h2 { font-size: 1.3em !important; font-weight: bold; margin: 1em 0 0.4em; }
+h3, h4, h5, h6 { font-size: 1.1em !important; font-weight: bold; margin: 0.8em 0 0.3em; }
 p { font-size: 1em; margin: 0.5em 0; text-align: justify; }
 li { font-size: 1em; margin: 0.3em 0; }
 blockquote { font-size: 1em; margin: 1em 2em; font-style: italic; }
 a { color: #1a0dab; }
-figure { display: block; text-align: center; margin: 1.5em auto; width: 66%; }
-img { display: block; max-width: 66%; height: auto; margin: 1.5em auto; }
+figure, p.img-block { display: block !important; text-align: center !important;
+                      margin: 1.5em auto !important; }
+figure img, p.img-block img, img { display: block !important; max-width: 66% !important;
+                                   width: auto !important; height: auto !important;
+                                   margin: 0.5em auto !important; }
 hr { margin: 1.5em 0; }
 ul, ol { margin: 0.5em 0 0.5em 1.5em; padding: 0; }
 * { font-size: inherit; }
-h1 { font-size: 1.6em; }
-h2 { font-size: 1.3em; }
-h3, h4, h5, h6 { font-size: 1.1em; }
 """
 
 _BLOCK_TAGS = {"address", "article", "aside", "blockquote", "canvas", "dd", "div",
@@ -89,14 +89,16 @@ def build_pdf(
     title: str,
     output_path: Path,
     image_cache: dict | None = None,
+    processed_contents: list[str] | None = None,
 ) -> Path:
     from weasyprint import HTML, CSS
 
     cache = image_cache or {}
+    contents = processed_contents or [None] * len(posts)
 
     chapters = "".join(
-        f"<h1>{p.title}</h1>{_clean_for_pdf(p.content or '<p>No content</p>', p.url, cache)}"
-        for p in posts
+        f"<h1>{p.title}</h1>{_clean_for_pdf(html or p.content or '<p>No content</p>', p.url, cache)}"
+        for p, html in zip(posts, contents)
     )
 
     html_content = f"""<!DOCTYPE html>
