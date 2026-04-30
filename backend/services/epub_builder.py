@@ -116,25 +116,27 @@ def _embed_images(
                     src = fallback
                     break
         if not src or src in _LAZY_PLACEHOLDERS or src.startswith("data:"):
-            img_tag.decompose()
+            _decompose_with_wrapper(img_tag)
             continue
 
         abs_url = urljoin(post_url, src)
 
         if any(frag in abs_url for frag in _SKIP_URL_FRAGMENTS):
-            img_tag.decompose()
+            _decompose_with_wrapper(img_tag)
             continue
+
+        img_parent = img_tag.parent  # capture before possible decompose
 
         if image_cache is not None and abs_url in image_cache:
             data, mime = image_cache[abs_url]
         else:
             result = _fetch_image(abs_url)
             if not result:
-                img_tag.decompose()
+                _decompose_with_wrapper(img_tag)
                 continue
             raw, mime = result
             if not mime.startswith("image/"):
-                img_tag.decompose()
+                _decompose_with_wrapper(img_tag)
                 continue
             data, mime = _to_epub_image(raw, mime)
             if image_cache is not None:
@@ -164,9 +166,30 @@ def _embed_images(
         img_tag.attrs.pop("loading", None)
         img_tag.attrs.pop("width", None)
         img_tag.attrs.pop("height", None)
-        img_tag["style"] = "max-width:66%;width:auto;height:auto;display:block;margin:0 auto;text-align:center"
+
+        # Size: content images (≥150px) get minimum 1/3 width; icons stay auto
+        try:
+            pil_img = Image.open(io.BytesIO(data))
+            is_content = pil_img.width >= 150 or pil_img.height >= 150
+        except Exception:
+            is_content = True
+        if is_content:
+            img_tag["style"] = "min-width:33%;width:auto;max-width:66%;height:auto;display:block;margin:0.5em auto"
+        else:
+            img_tag["style"] = "width:auto;height:auto;max-width:66%;display:block;margin:0.5em auto"
 
     return soup.body.decode_contents() if soup.body else str(soup)
+
+
+def _decompose_with_wrapper(img_tag) -> None:
+    """Decompose an img tag and also remove its wrapper if it becomes empty."""
+    parent = img_tag.parent
+    img_tag.decompose()
+    if parent and parent.parent is not None:
+        classes = parent.get("class") or []
+        if "img-block" in classes or parent.name == "figure":
+            if not parent.get_text(strip=True) and not parent.find("img"):
+                parent.decompose()
 
 
 _INLINE_TAGS = {"a", "abbr", "acronym", "b", "bdo", "big", "br", "cite", "code",
@@ -428,17 +451,27 @@ def _detect_verse_blocks(root, soup) -> None:
         if verse_ratio <= 0.55:
             continue
         _add_class(tag, "verse-block")
-        # Collapse 3+ consecutive <br> down to 2 (max one blank stanza line)
-        br_run = 0
-        for child in list(tag.descendants):
+        # Normalize <br> runs at each level of the verse element:
+        #   2 <br>  (double-spaced line) → 1 <br>  (simple verse line separator)
+        #   3+ <br> (stanza break)       → 2 <br>  (visible gap between stanzas)
+        def _flush_br_run(run: list) -> None:
+            n = len(run)
+            if n == 2:
+                run[-1].decompose()
+            elif n > 2:
+                for extra in run[2:]:
+                    extra.decompose()
+
+        br_run: list = []
+        for child in list(tag.children):
             if hasattr(child, "name") and child.name == "br":
-                br_run += 1
-                if br_run > 2:
-                    child.decompose()
+                br_run.append(child)
+            elif isinstance(child, NavigableString) and not child.strip():
+                continue
             else:
-                if isinstance(child, NavigableString) and not child.strip():
-                    continue
-                br_run = 0
+                _flush_br_run(br_run)
+                br_run = []
+        _flush_br_run(br_run)
 
     # Case 2: run of 4+ consecutive short verse-like <p> elements
     seen: set[int] = set()
@@ -626,6 +659,8 @@ p.verse-block { text-indent: 0; }
     text-decoration: none;
 }
 ul.footnotes { font-size: 0.9em !important; margin-top: 1em; }
+.original-url { font-size: 0.85em !important; margin-top: 0.6em; color: #555; font-style: italic; }
+.original-url a { color: #555; }
 """
 
 
@@ -677,7 +712,7 @@ def build_epub(
             )
 
         if links_to_footnotes:
-            content = _convert_links_to_footnotes(content)
+            content = _convert_links_to_footnotes(content, post_url=post.url or "")
 
         processed_contents.append(content)
 
@@ -712,7 +747,7 @@ def build_epub(
 _BARE_REF_RE = re.compile(r'^\s*\[\d+\]\s*$')
 
 
-def _convert_links_to_footnotes(html: str) -> str:
+def _convert_links_to_footnotes(html: str, post_url: str = "") -> str:
     from bs4 import NavigableString
     soup = BeautifulSoup(html, "lxml")
     body = soup.find("body")
@@ -737,12 +772,20 @@ def _convert_links_to_footnotes(html: str) -> str:
 
         footnotes.append((i, href))
 
-    if footnotes:
-        items = "".join(
-            f'<li id="ref-{n}">[{n}] <a href="{href}">{href}</a></li>'
-            for n, href in footnotes
-        )
-        fn_soup = BeautifulSoup(f'<hr/><ul class="footnotes">{items}</ul>', "lxml")
+    # Always emit the references section when footnotes exist OR when we have the original URL
+    if footnotes or post_url:
+        fn_parts = ['<hr/>']
+        if footnotes:
+            items = "".join(
+                f'<li id="ref-{n}">[{n}] <a href="{href}">{href}</a></li>'
+                for n, href in footnotes
+            )
+            fn_parts.append(f'<ul class="footnotes">{items}</ul>')
+        if post_url:
+            fn_parts.append(
+                f'<p class="original-url">Original: <a href="{post_url}">{post_url}</a></p>'
+            )
+        fn_soup = BeautifulSoup("".join(fn_parts), "lxml")
         fn_body = fn_soup.find("body")
         for child in list((fn_body or fn_soup).children):
             root.append(child)

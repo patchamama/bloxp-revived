@@ -34,6 +34,8 @@ p.verse-block { text-indent: 0; }
 .verse-block p.verse-stanza { margin: 0.7em 0 !important; }
 .footnote-ref { font-size: 0.75em !important; vertical-align: super; text-decoration: none; }
 ul.footnotes { font-size: 0.9em !important; margin-top: 1em; }
+.original-url { font-size: 0.85em !important; margin-top: 0.6em; color: #555; font-style: italic; }
+.original-url a { color: #555; }
 """
 
 _BLOCK_TAGS = {"address", "article", "aside", "blockquote", "canvas", "dd", "div",
