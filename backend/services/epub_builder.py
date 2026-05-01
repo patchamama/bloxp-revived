@@ -393,7 +393,7 @@ _MSO_STYLE_RE = re.compile(r'<style\b[^>]*>.*?</style>', re.DOTALL | re.IGNORECA
 _OUR_CLASSES = frozenset({
     "img-block", "verse-block", "verse-stanza",
     "post-date", "quoted-para", "original-url",
-    "footnotes", "footnote-ref",
+    "footnotes", "footnote-ref", "video-embed",
 })
 
 
@@ -694,6 +694,60 @@ def _mark_quoted_paragraphs(root) -> None:
         _add_class(p, "quoted-para")
 
 
+def _split_br_paragraphs(root) -> None:
+    """Split any <p> or <div> that has direct <br> children into multiple <p> elements.
+
+    Converts br-delimited inline content into proper paragraph structure so that
+    verse detection (Case 2) works uniformly and epub readers render correctly.
+    """
+    from bs4 import NavigableString, Tag
+
+    for tag in list(root.find_all(["p", "div"])):
+        if tag.parent is None:
+            continue
+        # Must have at least one direct <br> child
+        if not any(hasattr(c, "name") and c.name == "br" for c in tag.children):
+            continue
+        # Skip if it contains block-level children (structural wrapper, not a text run)
+        if any(hasattr(c, "name") and c.name in _BLOCK_TAGS and c.name != "br"
+               for c in tag.children):
+            continue
+
+        children_snap = list(tag.children)
+        segments: list[list] = [[]]
+        for child in children_snap:
+            if hasattr(child, "name") and child.name == "br":
+                segments.append([])
+            else:
+                segments[-1].append(child)
+
+        if len(segments) <= 1:
+            continue
+
+        for seg in segments:
+            p = Tag(name="p")
+            for node in seg:
+                p.append(node.extract() if node.parent is not None else node)
+            tag.insert_before(p)
+        tag.decompose()
+
+
+def _remove_social_share_links(root) -> None:
+    """Remove social-share links (?share=twitter/facebook/email) and empty containers."""
+    for a in list(root.find_all("a", href=True)):
+        if a.parent is None:
+            continue
+        href = a.get("href", "")
+        if not any(p in href for p in ("share=twitter", "share=facebook", "share=email",
+                                        "?share=", "&share=")):
+            continue
+        parent = a.parent
+        a.decompose()
+        if parent and parent.parent is not None:
+            if not parent.get_text(strip=True) and not parent.find("img"):
+                parent.decompose()
+
+
 # ── Main HTML normalizer ──────────────────────────────────────────────────────
 
 
@@ -711,10 +765,17 @@ def _clean_content(html: str) -> str:
     # Links whose href points to an image → convert to <img> so they get embedded
     _expand_image_links(root)
 
+    # Remove social-share noise early so it doesn't pollute verse/paragraph detection
+    _remove_social_share_links(root)
+
     # Convert inline-only <div> → <p> so readers don't break mid-sentence at block boundaries
     for div in root.find_all("div"):
         if _div_is_paragraph(div):
             div.name = "p"
+
+    # Split <p>/<div> with direct <br> children into separate <p> elements.
+    # This normalises all br-delimited content before verse detection runs.
+    _split_br_paragraphs(root)
 
     # Old Blogger: bare text + <br> at body level — wrap into <p> tags
     _wrap_loose_paragraphs(root)
@@ -822,6 +883,12 @@ ul.footnotes { font-size: 0.9em !important; margin-top: 1em; }
 .original-url { font-size: 0.85em !important; margin-top: 0.6em; color: #555; font-style: italic; text-indent: 0; }
 .original-url a { color: #555; }
 ul.footnotes p, ul.footnotes li { text-indent: 0; }
+/* Video embed placeholder */
+.video-embed { display: block; text-align: center; margin: 1.5em auto; }
+.video-embed img { display: block; max-width: 90%; width: auto; height: auto;
+                   margin: 0 auto 0.4em; border: 1px solid #ccc; }
+.video-embed p { font-size: 0.85em !important; text-align: center;
+                 margin: 0.2em 0; text-indent: 0; }
 """
 
 
@@ -944,7 +1011,7 @@ def _convert_links_to_footnotes(html: str, post_url: str = "") -> str:
             fn_parts.append(f'<ul class="footnotes">{items}</ul>')
         if post_url:
             fn_parts.append(
-                f'<p class="original-url">Original: <a href="{post_url}">{post_url}</a></p>'
+                f'<p class="original-url">Link: <a href="{post_url}">{post_url}</a></p>'
             )
         fn_soup = BeautifulSoup("".join(fn_parts), "lxml")
         fn_body = fn_soup.find("body")

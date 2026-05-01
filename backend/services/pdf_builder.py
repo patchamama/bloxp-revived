@@ -36,6 +36,10 @@ p.verse-block { text-indent: 0; }
 ul.footnotes { font-size: 0.9em !important; margin-top: 1em; }
 .original-url { font-size: 0.85em !important; margin-top: 0.6em; color: #555; font-style: italic; }
 .original-url a { color: #555; }
+.video-embed { display: block; text-align: center; margin: 1.5em auto; }
+.video-embed img { display: block; max-width: 80% !important; width: auto !important;
+                   height: auto !important; margin: 0 auto 0.4em; border: 1px solid #ccc; }
+.video-embed p { font-size: 0.85em !important; text-align: center; margin: 0.2em 0; }
 """
 
 _BLOCK_TAGS = {"address", "article", "aside", "blockquote", "canvas", "dd", "div",

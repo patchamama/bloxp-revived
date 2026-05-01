@@ -8,6 +8,13 @@ from readability import Document
 _MSO_RE = re.compile(r'<!--\[if [^\]]+\]>.*?<!\[endif\]-->', re.DOTALL | re.IGNORECASE)
 _XML_BLOB_RE = re.compile(r'<xml\b[^>]*>.*?</xml>', re.DOTALL | re.IGNORECASE)
 
+# Video embed URL patterns
+_YOUTUBE_RE = re.compile(
+    r'(?:youtube\.com/(?:embed/|watch\?v=)|youtu\.be/)([A-Za-z0-9_-]{11})',
+    re.IGNORECASE,
+)
+_VIMEO_RE = re.compile(r'vimeo\.com/(?:video/)?(\d+)', re.IGNORECASE)
+
 # Placeholder src values used by lazy-loading scripts
 _LAZY_PLACEHOLDERS = {"", "//:0", "about:blank", "#", "data:,"}
 # Attributes that hold the real image URL in lazy-loaded content
@@ -73,6 +80,54 @@ def _strip_mso(html: str) -> str:
     return html
 
 
+def _handle_video_iframes(container) -> None:
+    """Convert video <iframe> embeds to thumbnail + link placeholders.
+
+    Runs before iframe stripping so video information is preserved.
+    """
+    for iframe in list(container.find_all("iframe")):
+        src = (iframe.get("src") or "").strip()
+        if not src:
+            iframe.decompose()
+            continue
+
+        short_url = thumb_url = None
+        yt = _YOUTUBE_RE.search(src)
+        if yt:
+            vid_id = yt.group(1)
+            short_url = f"https://youtu.be/{vid_id}"
+            thumb_url = f"https://img.youtube.com/vi/{vid_id}/hqdefault.jpg"
+        else:
+            vm = _VIMEO_RE.search(src)
+            if vm:
+                short_url = f"https://vimeo.com/{vm.group(1)}"
+
+        if not short_url:
+            iframe.decompose()
+            continue
+
+        wrapper = Tag(name="div")
+        wrapper["class"] = ["video-embed"]
+
+        if thumb_url:
+            link = Tag(name="a")
+            link["href"] = short_url
+            img = Tag(name="img")
+            img["src"] = thumb_url
+            img["alt"] = "▶ Video"
+            link.append(img)
+            wrapper.append(link)
+
+        url_p = Tag(name="p")
+        url_a = Tag(name="a")
+        url_a["href"] = short_url
+        url_a.string = f"▶ {short_url}"
+        url_p.append(url_a)
+        wrapper.append(url_p)
+
+        iframe.replace_with(wrapper)
+
+
 def _extract_with_selector(html: str) -> str | None:
     """Find the article body using known CSS selectors, preserving images."""
     try:
@@ -88,6 +143,9 @@ def _extract_with_selector(html: str) -> str | None:
 
         if not container:
             return None
+
+        # Convert video iframes to thumbnail+link before stripping iframes
+        _handle_video_iframes(container)
 
         # Strip noise tags in-place
         for tag in container.find_all(_STRIP_TAGS):
