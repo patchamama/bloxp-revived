@@ -36,12 +36,14 @@ function JobRow({
     (data.status === 'downloading_images' ||
       (data.status === 'generating' && data.images_found > 0 && data.images_embedded < data.images_found))
   const displayStatus = isImagePhase ? 'downloading_images' : data?.status
+  const displayTitle =
+    data && !isError && data.status === 'done' && data.ebook_title ? data.ebook_title : entry.title
 
   return (
     <tr className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
       <td className="py-3 px-4">
         <div className="font-medium text-gray-900 dark:text-white text-sm truncate max-w-xs">
-          {entry.title}
+          {displayTitle}
         </div>
         <div className="text-xs text-gray-400 mt-0.5">{date}</div>
         {entry.source_url && (
