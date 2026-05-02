@@ -18,6 +18,7 @@ function JobRow({
     retry: false,
     staleTime: 2_000,
     refetchInterval: (q) => {
+      if (q.state.error) return false
       const status = q.state.data?.status
       if (!status) return 3_000
       return status === 'done' || status === 'error' ? false : 3_000
@@ -186,7 +187,13 @@ export function HistoryPage() {
   >({})
 
   useEffect(() => {
-    setEntries(getJobHistory())
+    const now = Date.now()
+    const fresh = getJobHistory().filter((e) => now - e.created_at <= 24 * 60 * 60 * 1000)
+    // remove stale entries from storage
+    getJobHistory()
+      .filter((e) => now - e.created_at > 24 * 60 * 60 * 1000)
+      .forEach((e) => removeJobFromHistory(e.job_id))
+    setEntries(fresh)
   }, [])
 
   async function handleRemove(job_id: string) {

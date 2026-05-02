@@ -2,12 +2,15 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from config import settings
+
 
 def convert_epub_to_mobi(epub_path: Path, mobi_path: Path) -> Optional[str]:
     """Returns error string if conversion fails, None on success."""
     try:
+        cmd = settings.calibre_ebook_convert_path or "ebook-convert"
         result = subprocess.run(
-            ["ebook-convert", str(epub_path), str(mobi_path)],
+            [cmd, str(epub_path), str(mobi_path)],
             capture_output=True,
             text=True,
             timeout=120,
@@ -16,6 +19,6 @@ def convert_epub_to_mobi(epub_path: Path, mobi_path: Path) -> Optional[str]:
             return result.stderr or "ebook-convert failed"
         return None
     except (FileNotFoundError, PermissionError, OSError):
-        return "Calibre not installed or not executable — Mobi conversion unavailable"
+        return f"Calibre not installed or not executable at '{settings.calibre_ebook_convert_path}' — Mobi conversion unavailable"
     except subprocess.TimeoutExpired:
         return "Mobi conversion timed out"

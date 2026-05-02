@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from typing import Any
+import re
 import zipfile
 import xml.etree.ElementTree as ET
 
@@ -16,6 +17,8 @@ from tasks.process_blog import cancel_job, get_state
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 _redis = redis_lib.from_url(settings.redis_url, decode_responses=True)
+_IMG_SRC_RE = re.compile(r"<img\b[^>]*\bsrc=[\"']([^\"']+)[\"']", re.IGNORECASE)
+_IMG_SKIP = ("icon18_email", "icon18_edit", "blank.gif", "favicon", "s16/", "s24/", "s28/", "s32/")
 
 
 def _read_metadata_file(job_dir: Path) -> dict[str, Any]:
@@ -49,6 +52,20 @@ def _extract_epub_title(job_dir: Path) -> str | None:
             return title or None
     except Exception:
         return None
+
+
+def _count_meaningful_images(html: str) -> int:
+    if not html:
+        return 0
+    seen: set[str] = set()
+    for src in _IMG_SRC_RE.findall(html):
+        s = (src or "").strip()
+        if not s or s.startswith("data:"):
+            continue
+        if any(token in s for token in _IMG_SKIP):
+            continue
+        seen.add(s)
+    return len(seen)
 
 
 class AdminLoginRequest(BaseModel):
@@ -132,7 +149,7 @@ def cache_sites(_: dict = Depends(require_admin_auth)) -> dict[str, Any]:
             continue
         host = url.split("/")[2] if "://" in url else "unknown"
         ttl = _redis.ttl(key)
-        image_count = html.lower().count("<img") if html else 0
+        image_count = _count_meaningful_images(html)
         g = grouped.setdefault(
             host,
             {"site": host, "pages_count": 0, "images_count_total": 0, "total_bytes": 0, "pages": []},

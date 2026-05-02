@@ -29,6 +29,39 @@ function fmtBytes(n: number | null | undefined): string {
   return `${(n / (1024 * 1024)).toFixed(2)} MB`
 }
 
+function timeLeftMeta(expiresAt: number | null | undefined): { text: string; cls: string } {
+  if (!expiresAt || !Number.isFinite(Number(expiresAt))) {
+    return { text: '—', cls: 'text-gray-500' }
+  }
+  const expSec = Number(expiresAt)
+  const leftSec = Math.max(0, expSec - Date.now() / 1000)
+  const hours = leftSec / 3600
+  const text =
+    leftSec <= 0
+      ? 'expired'
+      : hours >= 1
+      ? `${hours.toFixed(1)}h left`
+      : `${Math.ceil(leftSec / 60)}m left`
+  const cls = leftSec <= 0 ? 'text-red-600' : hours <= 3 ? 'text-red-600' : hours <= 12 ? 'text-yellow-600' : 'text-green-600'
+  return { text, cls }
+}
+
+function StatusBadge({ status }: { status?: string | null }) {
+  const s = status ?? 'orphaned'
+  const styles: Record<string, string> = {
+    done: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    error: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    queued: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+    parsing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    crawling: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    downloading_images: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+    generating: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+    orphaned: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+  }
+  const labels: Record<string, string> = { downloading_images: 'downloading images' }
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${styles[s] ?? styles.orphaned}`}>{labels[s] ?? s}</span>
+}
+
 export function AdminPage() {
   const [token, setToken] = useState<string>(() => localStorage.getItem(TOKEN_KEY) ?? '')
   const [username, setUsername] = useState('admin')
@@ -162,10 +195,11 @@ export function AdminPage() {
                 <div key={e.job_id} className="border rounded p-2">
                   <div className="font-medium">{e.ebook_title ?? e.job_id}</div>
                   <div className="text-xs text-gray-500">
-                    status={e.status ?? '—'} · posts={e.posts_count ?? '—'} · source={e.source_url ?? '—'} · dir={e.dir_path}
+                    <span className="align-middle">status=</span> <StatusBadge status={e.status} /> · posts={e.posts_count ?? '—'} · source={e.source_url ? <a className="text-blue-600 underline" href={e.source_url} target="_blank" rel="noreferrer">{e.source_url}</a> : '—'} · dir={e.dir_path}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
                     created={fmtDate(e.created_at)} · expires={fmtDate(e.expires_at)}
+                    <span className={timeLeftMeta(e.expires_at).cls}>({timeLeftMeta(e.expires_at).text})</span>
                   </div>
                   <div className="flex gap-3 flex-wrap">
                     {e.files.map((f: any) => (
@@ -217,7 +251,7 @@ export function AdminPage() {
                   <div className="mt-2 space-y-1">
                     {s.pages.map((c: any) => (
                       <div key={c.key} className="border rounded p-2">
-                        <div className="truncate">{c.url}</div>
+                        <a className="truncate text-blue-600 underline block" href={c.url} target="_blank" rel="noreferrer">{c.url}</a>
                         <div className="text-xs text-gray-500">
                           {c.key} · ttl={c.ttl_seconds}s · {c.size_bytes} bytes · imgs={c.image_count}
                         </div>

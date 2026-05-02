@@ -35,6 +35,41 @@ warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
 step()    { echo -e "\n${BOLD}▶  $*${NC}"; }
 
+install_help() {
+  local what="$1"
+  echo -e "${YELLOW}How to install ${what}:${NC}"
+  if [ "$OS" = "Linux" ]; then
+    case "$what" in
+      "Node.js") echo "  Ubuntu: sudo apt-get update && sudo apt-get install -y nodejs npm" ;;
+      "Python 3.11+") echo "  Ubuntu: sudo apt-get update && sudo apt-get install -y python3 python3-venv python3-pip" ;;
+      "Redis") echo "  Ubuntu: sudo apt-get update && sudo apt-get install -y redis-server && sudo systemctl start redis-server" ;;
+      *) echo "  Ubuntu: use apt-get to install ${what}" ;;
+    esac
+  elif [ "$OS" = "Darwin" ]; then
+    case "$what" in
+      "Node.js") echo "  macOS: brew install node" ;;
+      "Python 3.11+") echo "  macOS: brew install python" ;;
+      "Redis") echo "  macOS: brew install redis && brew services start redis" ;;
+      *) echo "  macOS: brew install ${what}" ;;
+    esac
+  fi
+}
+
+set_env_kv() {
+  local file="$1" key="$2" value="$3"
+  if grep -q "^${key}=" "$file" 2>/dev/null; then
+    sed -i.bak "s|^${key}=.*|${key}=${value}|" "$file"
+  else
+    echo "${key}=${value}" >> "$file"
+  fi
+}
+
+prompt_default() {
+  local label="$1" default="$2" out
+  read -r -p "${label} [${default}]: " out || true
+  echo "${out:-$default}"
+}
+
 # ── Flags ─────────────────────────────────────────────────────────────────────
 BUILD_FRONTEND=true
 SETUP_VENV=true
@@ -69,18 +104,22 @@ OS="$(uname -s)"
 step "Checking prerequisites"
 
 if [ "$OS" = "Linux" ]; then
-  command -v node  >/dev/null 2>&1 || error "Node.js not found. Install via: sudo apt-get install -y nodejs npm"
-  command -v npm   >/dev/null 2>&1 || error "npm not found. Install via: sudo apt-get install -y npm"
-  command -v python3 >/dev/null 2>&1 || error "Python 3 not found. Install via: sudo apt-get install -y python3 python3-venv python3-pip"
+  command -v node  >/dev/null 2>&1 || { install_help "Node.js"; error "Node.js not found."; }
+  command -v npm   >/dev/null 2>&1 || { install_help "Node.js"; error "npm not found."; }
+  command -v python3 >/dev/null 2>&1 || { install_help "Python 3.11+"; error "Python 3 not found."; }
 else
-  command -v node  >/dev/null 2>&1 || error "Node.js not found. Install via: brew install node"
-  command -v npm   >/dev/null 2>&1 || error "npm not found."
-  command -v python3 >/dev/null 2>&1 || error "Python 3 not found. Install via: brew install python"
+  command -v node  >/dev/null 2>&1 || { install_help "Node.js"; error "Node.js not found."; }
+  command -v npm   >/dev/null 2>&1 || { install_help "Node.js"; error "npm not found."; }
+  command -v python3 >/dev/null 2>&1 || { install_help "Python 3.11+"; error "Python 3 not found."; }
 fi
 
 NODE_VER=$(node -v | sed 's/v//')
 PY_VER=$(python3 --version | awk '{print $2}')
 info "Node.js $NODE_VER | Python $PY_VER"
+python3 - <<'PY' || error "Python 3.11+ required."
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+PY
 
 # ── Check / install / start Redis ─────────────────────────────────────────────
 if ! redis-cli ping >/dev/null 2>&1; then
@@ -90,24 +129,25 @@ if ! redis-cli ping >/dev/null 2>&1; then
       info "Installing Redis via apt..."
       sudo apt-get update -qq \
         && sudo apt-get install -y redis-server >/dev/null 2>&1 \
-        || error "Could not install Redis. Run: sudo apt-get install redis-server"
+        || { install_help "Redis"; error "Could not install Redis."; }
     fi
     if command -v systemctl >/dev/null 2>&1; then
       sudo systemctl start redis-server 2>/dev/null \
         || sudo service redis-server start 2>/dev/null \
         || redis-server --daemonize yes 2>/dev/null \
-        || error "Could not start Redis."
+        || { install_help "Redis"; error "Could not start Redis."; }
     else
       sudo service redis-server start 2>/dev/null \
         || redis-server --daemonize yes 2>/dev/null \
-        || error "Could not start Redis."
+        || { install_help "Redis"; error "Could not start Redis."; }
     fi
   elif [ "$OS" = "Darwin" ]; then
     if command -v brew >/dev/null 2>&1; then
       brew services start redis >/dev/null 2>&1 \
-        || error "Could not start Redis. Run: brew install redis && brew services start redis"
+        || { install_help "Redis"; error "Could not start Redis."; }
     else
-      error "Redis is not running. Install: brew install redis && brew services start redis"
+      install_help "Redis"
+      error "Redis is not running."
     fi
   else
     error "Redis is not running. Start it manually: redis-server"
@@ -170,26 +210,113 @@ pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
 success "Python dependencies installed"
 
+command -v celery >/dev/null 2>&1 || error "Celery not available in venv after pip install (check backend/requirements.txt)."
+python - <<'PY' || error "Redis Python client missing in venv."
+import redis
+print(redis.__version__)
+PY
+
 # ── 5. Create required directories ────────────────────────────────────────────
 step "Creating runtime directories"
 mkdir -p "$GENERATED_DIR" "$LOG_DIR"
 success "Directories ready: generated/ logs/"
 
-# ── 6. Write .env if missing ──────────────────────────────────────────────────
+# ── 6. Create/update backend .env ─────────────────────────────────────────────
 ENV_FILE="$BACKEND_DIR/.env"
+step "Configuring backend .env"
 if [ ! -f "$ENV_FILE" ]; then
-  step "Creating default .env"
-  cat > "$ENV_FILE" << 'EOF'
-REDIS_URL=redis://localhost:6379/0
-GENERATED_DIR=../generated
-SMTP_HOST=
-SMTP_PORT=587
-SMTP_USER=
-SMTP_PASS=
-EOF
-  success "Created $ENV_FILE — edit it to configure SMTP"
+  cp "$BACKEND_DIR/.env.example" "$ENV_FILE"
+  success "Created $ENV_FILE from .env.example"
+fi
+
+if [ -t 0 ]; then
+  APP_VERSION_DEFAULT="$(grep '^APP_VERSION=' "$ENV_FILE" | cut -d= -f2- || true)"
+  MAX_POSTS_LIMIT_DEFAULT="$(grep '^MAX_POSTS_LIMIT=' "$ENV_FILE" | cut -d= -f2- || true)"
+  PAGE_CACHE_TTL_DEFAULT="$(grep '^PAGE_CACHE_TTL_SECONDS=' "$ENV_FILE" | cut -d= -f2- || true)"
+  JOB_TTL_DEFAULT="$(grep '^JOB_TTL_SECONDS=' "$ENV_FILE" | cut -d= -f2- || true)"
+  ADMIN_SECRET_DEFAULT="$(grep '^ADMIN_AUTH_SECRET=' "$ENV_FILE" | cut -d= -f2- || true)"
+  ADMIN_TOKEN_TTL_DEFAULT="$(grep '^ADMIN_TOKEN_TTL_SECONDS=' "$ENV_FILE" | cut -d= -f2- || true)"
+  MAX_CONCURRENT_JOBS_DEFAULT="$(grep '^MAX_CONCURRENT_JOBS=' "$ENV_FILE" | cut -d= -f2- || true)"
+  REDIS_URL_DEFAULT="$(grep '^REDIS_URL=' "$ENV_FILE" | cut -d= -f2- || true)"
+  GENERATED_DIR_DEFAULT="$(grep '^GENERATED_DIR=' "$ENV_FILE" | cut -d= -f2- || true)"
+  CALIBRE_PATH_DEFAULT="$(grep '^CALIBRE_EBOOK_CONVERT_PATH=' "$ENV_FILE" | cut -d= -f2- || true)"
+  SMTP_HOST_DEFAULT="$(grep '^SMTP_HOST=' "$ENV_FILE" | cut -d= -f2- || true)"
+  SMTP_PORT_DEFAULT="$(grep '^SMTP_PORT=' "$ENV_FILE" | cut -d= -f2- || true)"
+  SMTP_USER_DEFAULT="$(grep '^SMTP_USER=' "$ENV_FILE" | cut -d= -f2- || true)"
+  SMTP_PASS_DEFAULT="$(grep '^SMTP_PASS=' "$ENV_FILE" | cut -d= -f2- || true)"
+  ADMIN_USERS_DEFAULT="$(grep '^ADMIN_USERS_JSON=' "$ENV_FILE" | cut -d= -f2- || true)"
+
+  APP_VERSION_VAL="$(prompt_default "APP_VERSION" "${APP_VERSION_DEFAULT:-2.1.8}")"
+  MAX_POSTS_LIMIT_VAL="$(prompt_default "MAX_POSTS_LIMIT" "${MAX_POSTS_LIMIT_DEFAULT:-9999}")"
+  PAGE_CACHE_TTL_VAL="$(prompt_default "PAGE_CACHE_TTL_SECONDS" "${PAGE_CACHE_TTL_DEFAULT:-86400}")"
+  JOB_TTL_VAL="$(prompt_default "JOB_TTL_SECONDS (ebooks/job persistence)" "${JOB_TTL_DEFAULT:-86400}")"
+  ADMIN_SECRET_VAL="$(prompt_default "ADMIN_AUTH_SECRET" "${ADMIN_SECRET_DEFAULT:-change-me-dev-secret}")"
+  ADMIN_TOKEN_TTL_VAL="$(prompt_default "ADMIN_TOKEN_TTL_SECONDS" "${ADMIN_TOKEN_TTL_DEFAULT:-28800}")"
+  MAX_CONCURRENT_JOBS_VAL="$(prompt_default "MAX_CONCURRENT_JOBS" "${MAX_CONCURRENT_JOBS_DEFAULT:-2}")"
+  REDIS_URL_VAL="$(prompt_default "REDIS_URL" "${REDIS_URL_DEFAULT:-redis://localhost:6379/0}")"
+  GENERATED_DIR_VAL="$(prompt_default "GENERATED_DIR" "${GENERATED_DIR_DEFAULT:-../generated}")"
+  CALIBRE_PATH_VAL="$(prompt_default "CALIBRE_EBOOK_CONVERT_PATH" "${CALIBRE_PATH_DEFAULT:-/opt/calibre/ebook-convert}")"
+  SMTP_HOST_VAL="$(prompt_default "SMTP_HOST" "${SMTP_HOST_DEFAULT:-}")"
+  SMTP_PORT_VAL="$(prompt_default "SMTP_PORT" "${SMTP_PORT_DEFAULT:-587}")"
+  SMTP_USER_VAL="$(prompt_default "SMTP_USER" "${SMTP_USER_DEFAULT:-}")"
+  SMTP_PASS_VAL="$(prompt_default "SMTP_PASS" "${SMTP_PASS_DEFAULT:-}")"
+
+  read -r -p "Configure admin users now? [y/N]: " CFG_ADM || true
+  if [[ "${CFG_ADM:-N}" =~ ^[Yy]$ ]]; then
+    read -r -p "How many admin users? [1]: " NADM || true
+    NADM="${NADM:-1}"
+    ADMIN_USERS_VAL="$("$VENV_DIR/bin/python" - <<PY
+import json, os, hashlib, secrets
+n = int("${NADM}")
+users = {}
+for i in range(n):
+    u = input(f"Admin username #{i+1}: ").strip()
+    p = input(f"Password for {u}: ").strip()
+    salt = secrets.token_hex(16)
+    it = 200000
+    h = hashlib.pbkdf2_hmac("sha256", p.encode(), salt.encode(), it).hex()
+    users[u] = f"pbkdf2_sha256\${it}\${salt}\${h}"
+print(json.dumps(users, ensure_ascii=False))
+PY
+)"
+  else
+    ADMIN_USERS_VAL="${ADMIN_USERS_DEFAULT:-{\"admin\":\"pbkdf2_sha256\$200000\$2c4c14d9bfd648aa92da45063abe8e7d\$fa642fc7877bbde4fea1fd6b6bf1bce10f954cad1e698f0314181d20d07e913a\"}}"
+  fi
+
+  set_env_kv "$ENV_FILE" "APP_VERSION" "$APP_VERSION_VAL"
+  set_env_kv "$ENV_FILE" "MAX_POSTS_LIMIT" "$MAX_POSTS_LIMIT_VAL"
+  set_env_kv "$ENV_FILE" "PAGE_CACHE_TTL_SECONDS" "$PAGE_CACHE_TTL_VAL"
+  set_env_kv "$ENV_FILE" "JOB_TTL_SECONDS" "$JOB_TTL_VAL"
+  set_env_kv "$ENV_FILE" "ADMIN_AUTH_SECRET" "$ADMIN_SECRET_VAL"
+  set_env_kv "$ENV_FILE" "ADMIN_TOKEN_TTL_SECONDS" "$ADMIN_TOKEN_TTL_VAL"
+  set_env_kv "$ENV_FILE" "MAX_CONCURRENT_JOBS" "$MAX_CONCURRENT_JOBS_VAL"
+  set_env_kv "$ENV_FILE" "ADMIN_USERS_JSON" "$ADMIN_USERS_VAL"
+  set_env_kv "$ENV_FILE" "REDIS_URL" "$REDIS_URL_VAL"
+  set_env_kv "$ENV_FILE" "GENERATED_DIR" "$GENERATED_DIR_VAL"
+  set_env_kv "$ENV_FILE" "CALIBRE_EBOOK_CONVERT_PATH" "$CALIBRE_PATH_VAL"
+  set_env_kv "$ENV_FILE" "SMTP_HOST" "$SMTP_HOST_VAL"
+  set_env_kv "$ENV_FILE" "SMTP_PORT" "$SMTP_PORT_VAL"
+  set_env_kv "$ENV_FILE" "SMTP_USER" "$SMTP_USER_VAL"
+  set_env_kv "$ENV_FILE" "SMTP_PASS" "$SMTP_PASS_VAL"
+  rm -f "$ENV_FILE.bak"
+  success "Updated $ENV_FILE"
 else
-  info ".env already exists, skipping"
+  warn "Non-interactive shell: .env not prompted. Existing values preserved."
+fi
+
+# Calibre path validation
+CALIBRE_PATH_EFFECTIVE="$(grep '^CALIBRE_EBOOK_CONVERT_PATH=' "$ENV_FILE" | cut -d= -f2- || true)"
+if [ -n "$CALIBRE_PATH_EFFECTIVE" ] && [ -x "$CALIBRE_PATH_EFFECTIVE" ]; then
+  success "Calibre convert binary found at: $CALIBRE_PATH_EFFECTIVE"
+elif command -v ebook-convert >/dev/null 2>&1; then
+  warn "Configured Calibre path not executable ($CALIBRE_PATH_EFFECTIVE), but ebook-convert exists in PATH."
+else
+  warn "Calibre convert binary not found at configured path ($CALIBRE_PATH_EFFECTIVE) and not in PATH."
+  if [ "$OS" = "Linux" ]; then
+    echo "  Ubuntu: install Calibre and set CALIBRE_EBOOK_CONVERT_PATH (e.g. /opt/calibre/ebook-convert)"
+  else
+    echo "  macOS: brew install --cask calibre, then set CALIBRE_EBOOK_CONVERT_PATH"
+  fi
 fi
 
 # ── 7. Kill any previous processes ────────────────────────────────────────────
