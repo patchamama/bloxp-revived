@@ -43,7 +43,10 @@ Esta reimplementación estuvo pendiente durante mucho tiempo. Lo que finalmente 
 | **Tres formatos de salida** | ePub (universal), Mobi (Kindle vía Calibre), PDF (vía WeasyPrint) |
 | **Tabla de contenidos** | Opcional, generada automáticamente a partir de los títulos de los posts |
 | **Links como notas al pie** | Conversión opcional de links inline a notas numeradas |
+| **Contenido más limpio** | Mejor normalización de párrafos, manejo de verso/poesía y limpieza de bloques sociales/compartir |
+| **Exportación con mejor media** | Mejor filtrado/descarga de imágenes y soporte para referencias de videos embebidos |
 | **Procesamiento asíncrono** | Los trabajos corren en background vía Celery; el progreso se trackea en tiempo real |
+| **Diagnóstico en tiempo real** | Línea de estado en el pie con versiones FE/BE, estado de Celery y tareas corriendo/en cola |
 | **Limpieza automática** | Los archivos generados expiran después de 24 horas |
 
 ---
@@ -101,7 +104,7 @@ graph TD
     end
 
     subgraph Backend["Backend — FastAPI (Python)"]
-        API["POST /api/jobs\nGET /api/jobs/:id\nGET /api/jobs/:id/download/:fmt"]
+        API["POST /api/jobs\nGET /api/jobs/:id\nGET /api/jobs/:id/download/:fmt\nGET /api/system/status"]
         Static["Static files\n(React SPA en producción)"]
     end
 
@@ -233,7 +236,7 @@ bloxp-revived/
 │       └── api/               # Wrappers de fetch tipados
 ├── backend/                   # FastAPI + Celery
 │   ├── main.py                # Entry point (sirve API + SPA en producción)
-│   ├── routers/               # jobs, download, contact
+│   ├── routers/               # jobs, download, contact, system
 │   ├── tasks/                 # process_blog (Celery), cleanup (beat)
 │   ├── services/              # feed_parser, crawler, extractor, epub/mobi/pdf builders
 │   ├── models/                # Modelos Pydantic (JobState, EbookOptions)
@@ -291,6 +294,7 @@ Copiá `.env.example` a `backend/.env` y ajustá según necesites:
 | `POST` | `/api/jobs` | Crear un nuevo job de ebook |
 | `GET` | `/api/jobs/:id` | Consultar estado y progreso del job |
 | `GET` | `/api/jobs/:id/download/:format` | Descargar `epub`, `mobi` o `pdf` |
+| `GET` | `/api/system/status` | Diagnóstico runtime (Celery, contadores en ejecución/en cola, versión backend) |
 | `POST` | `/api/contact` | Enviar mensaje por el formulario de contacto |
 | `GET` | `/api/health` | Health check |
 

@@ -43,7 +43,10 @@ This reimplementation has been on a to-do list for a long time. What finally mad
 | **Three output formats** | ePub (universal), Mobi (Kindle via Calibre), PDF (via WeasyPrint) |
 | **Table of contents** | Optional, auto-generated from post titles |
 | **Links to footnotes** | Optional conversion of inline links to numbered footnotes |
+| **Cleaner blog content** | Improved paragraph normalization, verse/poem handling, and social/share block cleanup |
+| **Media-aware export** | Better image filtering/fetching and support for embedded video references |
 | **Async processing** | Jobs run in the background via Celery; progress tracked in real time |
+| **Runtime diagnostics** | Footer status line with FE/BE versions, Celery online state, running and queued tasks |
 | **Auto cleanup** | Generated files expire after 24 hours |
 
 ---
@@ -101,7 +104,7 @@ graph TD
     end
 
     subgraph Backend["Backend — FastAPI (Python)"]
-        API["POST /api/jobs\nGET /api/jobs/:id\nGET /api/jobs/:id/download/:fmt"]
+        API["POST /api/jobs\nGET /api/jobs/:id\nGET /api/jobs/:id/download/:fmt\nGET /api/system/status"]
         Static["Static files\n(React SPA in production)"]
     end
 
@@ -233,7 +236,7 @@ bloxp-revived/
 │       └── api/               # Typed fetch wrappers
 ├── backend/                   # FastAPI + Celery
 │   ├── main.py                # App entry point (serves API + SPA in production)
-│   ├── routers/               # jobs, download, contact
+│   ├── routers/               # jobs, download, contact, system
 │   ├── tasks/                 # process_blog (Celery), cleanup (beat)
 │   ├── services/              # feed_parser, crawler, extractor, epub/mobi/pdf builders
 │   ├── models/                # Pydantic models (JobState, EbookOptions)
@@ -291,6 +294,7 @@ Copy `.env.example` to `backend/.env` and adjust:
 | `POST` | `/api/jobs` | Create a new ebook job |
 | `GET` | `/api/jobs/:id` | Poll job status and progress |
 | `GET` | `/api/jobs/:id/download/:format` | Download `epub`, `mobi`, or `pdf` |
+| `GET` | `/api/system/status` | Runtime diagnostics (Celery, running/pending counters, backend version) |
 | `POST` | `/api/contact` | Send a contact form message |
 | `GET` | `/api/health` | Health check |
 
