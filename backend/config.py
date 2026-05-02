@@ -2,8 +2,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    app_version: str = "2.0.1"
+    app_version: str = "2.0.9"
     max_posts_limit: int = 9999
+    page_cache_ttl_seconds: int = 86400
     redis_url: str = "redis://localhost:6379/0"
     generated_dir: str = "./generated"
     smtp_host: str = ""

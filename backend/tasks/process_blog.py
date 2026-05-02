@@ -20,6 +20,7 @@ from services.epub_builder import build_epub
 from services.mobi_converter import convert_epub_to_mobi
 from services.pdf_builder import build_pdf
 from storage.file_manager import epub_path, mobi_path, pdf_path
+from storage.file_manager import cleanup_job
 from tasks.celery_app import celery_app
 
 _redis = redis_lib.from_url(settings.redis_url)
@@ -28,6 +29,7 @@ _log = logging.getLogger(__name__)
 # ── Job queue keys ────────────────────────────────────────────────────────────
 _ACTIVE_KEY = "bloxp:active"    # SET  — job IDs currently being processed
 _QUEUE_KEY  = "bloxp:pending"   # LIST — JSON {job_id, task, payload} waiting for a slot
+_TASK_KEY_PREFIX = "bloxp:task:"
 
 
 def _save_state(state: JobState) -> None:
@@ -70,7 +72,12 @@ def _active_count() -> int:
     for m in members:
         jid = _decode(m)
         state = get_state(jid)
-        if state and state.status in (JobStatus.parsing, JobStatus.crawling, JobStatus.generating):
+        if state and state.status in (
+            JobStatus.parsing,
+            JobStatus.crawling,
+            JobStatus.downloading_images,
+            JobStatus.generating,
+        ):
             active += 1
         else:
             stale.append(m)
@@ -99,9 +106,43 @@ def get_queue_position(job_id: str) -> int:
 
 def _launch(task: str, job_id: str, payload: dict) -> None:
     if task == "basic":
-        process_basic.apply_async(args=[job_id, payload])
+        res = process_basic.apply_async(args=[job_id, payload])
     else:
-        process_advanced.apply_async(args=[job_id, payload])
+        res = process_advanced.apply_async(args=[job_id, payload])
+    _redis.setex(f"{_TASK_KEY_PREFIX}{job_id}", settings.job_ttl_seconds, res.id)
+
+
+def _remove_from_pending(job_id: str) -> None:
+    kept: list[str] = []
+    for raw in _redis.lrange(_QUEUE_KEY, 0, -1):
+        entry = json.loads(_decode(raw))
+        if entry.get("job_id") != job_id:
+            kept.append(json.dumps(entry))
+    pipe = _redis.pipeline()
+    pipe.delete(_QUEUE_KEY)
+    if kept:
+        pipe.rpush(_QUEUE_KEY, *kept)
+    pipe.execute()
+
+
+def cancel_job(job_id: str) -> bool:
+    """Cancel queued/running job and delete all artifacts/state."""
+    existed = bool(get_state(job_id))
+
+    _remove_from_pending(job_id)
+    _redis.srem(_ACTIVE_KEY, job_id)
+
+    task_id = _redis.get(f"{_TASK_KEY_PREFIX}{job_id}")
+    if task_id:
+        try:
+            celery_app.control.revoke(task_id, terminate=True, signal="SIGTERM")
+        except Exception:
+            pass
+        _redis.delete(f"{_TASK_KEY_PREFIX}{job_id}")
+
+    _redis.delete(f"job:{job_id}")
+    cleanup_job(job_id)
+    return existed
 
 
 def submit_job(job_id: str, task: str, payload: dict) -> None:
@@ -299,11 +340,11 @@ def _generate_ebooks(
 
     # Authoritative count of posts that made it into the ebook
     state.posts_crawled = len(posts)
-    state.status = JobStatus.generating
     state.progress = 75
     state.ebook_title = _slugify(title)
 
     if include_images:
+        state.status = JobStatus.downloading_images
         # Count total images across all posts so frontend can show progress
         _SKIP = ("icon18_email", "icon18_edit", "blank.gif", "favicon", "s16/", "s24/", "s28/", "s32/")
         total_imgs = 0
@@ -314,11 +355,17 @@ def _generate_ebooks(
                 if src and not src.startswith("data:") and not any(f in src for f in _SKIP):
                     total_imgs += 1
         state.images_found = total_imgs
+        if total_imgs == 0:
+            state.status = JobStatus.generating
+    else:
+        state.status = JobStatus.generating
 
     _save_state(state)
 
     def on_image(embedded: int) -> None:
         state.images_embedded = embedded
+        if state.images_found > 0:
+            state.progress = 75 + int((embedded / state.images_found) * 10)
         _save_state(state)
 
     ep = epub_path(state.job_id)
@@ -327,6 +374,7 @@ def _generate_ebooks(
         on_image=on_image if include_images else None,
     )
     state.epub_path = str(ep)
+    state.status = JobStatus.generating
     state.progress = 85
     _save_state(state)
 

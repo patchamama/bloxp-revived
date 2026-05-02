@@ -7,6 +7,7 @@ class JobStatus(str, Enum):
     queued = "queued"
     parsing = "parsing"
     crawling = "crawling"
+    downloading_images = "downloading_images"
     generating = "generating"
     done = "done"
     error = "error"

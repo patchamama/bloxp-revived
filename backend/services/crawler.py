@@ -4,6 +4,7 @@ from typing import Callable, Optional
 import httpx
 from services.link_finder import find_next_post_url
 from services.content_extractor import extract_content
+from services.page_cache import get_cached_html, set_cached_html
 from models.ebook_options import CustomSelector
 
 HEADERS = {
@@ -38,9 +39,13 @@ async def crawl_from_feed(
         async def fetch_one(url: str, idx: int) -> Optional[Post]:
             async with sem:
                 try:
-                    r = await client.get(url)
-                    r.raise_for_status()
-                    title, date, content = extract_content(r.text, url, include_images=include_images)
+                    html = get_cached_html(url)
+                    if html is None:
+                        r = await client.get(url)
+                        r.raise_for_status()
+                        html = r.text
+                        set_cached_html(url, html)
+                    title, date, content = extract_content(html, url, include_images=include_images)
                     if on_progress:
                         on_progress(idx + 1, total)
                     return Post(url=url, title=title, content=content, date=date)
@@ -66,9 +71,12 @@ async def crawl_from_url(
     async with httpx.AsyncClient(headers=HEADERS, timeout=TIMEOUT, follow_redirects=True) as client:
         while current_url and len(posts) < max_posts:
             try:
-                r = await client.get(current_url)
-                r.raise_for_status()
-                html = r.text
+                html = get_cached_html(current_url)
+                if html is None:
+                    r = await client.get(current_url)
+                    r.raise_for_status()
+                    html = r.text
+                    set_cached_html(current_url, html)
                 title, date, content = extract_content(html, current_url, include_images=include_images)
 
                 if not posts and start_title:

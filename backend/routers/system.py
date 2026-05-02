@@ -18,12 +18,14 @@ def system_status() -> dict:
     reserved_map = inspector.reserved() if inspector else None
     active_tasks = sum(len(tasks or []) for tasks in (active_map or {}).values())
     reserved_tasks = sum(len(tasks or []) for tasks in (reserved_map or {}).values())
+    # Celery inspect can undercount in some moments; Redis active set tracks admitted jobs.
+    effective_active = max(active_tasks, stats["active_jobs"])
     return {
         "backend_version": settings.app_version,
         "max_posts_limit": settings.max_posts_limit,
         "celery_running": celery_running,
         "celery_workers": workers,
-        "active_jobs": active_tasks,
+        "active_jobs": effective_active,
         "pending_jobs": reserved_tasks + stats["pending_jobs"],
         "max_concurrent_jobs": stats["max_concurrent_jobs"],
     }

@@ -34,6 +34,14 @@ export function getJobStatus(jobId: string): Promise<JobStatusResponse> {
   return apiFetch(`/api/jobs/${jobId}`)
 }
 
+export async function cancelJob(jobId: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/jobs/${jobId}`, { method: 'DELETE' })
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text().catch(() => res.statusText)
+    throw new Error(text)
+  }
+}
+
 export function getSystemStatus(): Promise<SystemStatusResponse> {
   return apiFetch('/api/system/status')
 }

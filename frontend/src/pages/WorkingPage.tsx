@@ -12,6 +12,7 @@ const STATUS_MESSAGES: Record<JobStatus, string> = {
   queued: 'Your job is in the queue…',
   parsing: 'Parsing feed…',
   crawling: 'Crawling blog posts…',
+  downloading_images: 'Generating ebook…',
   generating: 'Generating ebook…',
   done: 'Your ebook is ready!',
   error: 'An error occurred.',
@@ -70,7 +71,8 @@ export function WorkingPage() {
             {data.posts_crawled} / {data.posts_found} posts crawled
           </p>
         )}
-        {data.status === 'generating' && data.images_found > 0 && (
+        {(data.status === 'downloading_images' || data.status === 'generating') &&
+          data.images_found > 0 && (
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Embedding images: {data.images_embedded} / {data.images_found}
           </p>

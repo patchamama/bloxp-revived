@@ -1,20 +1,41 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { getJobStatus } from '@/api/client'
+import { cancelJob, getJobStatus } from '@/api/client'
 import { getJobHistory, removeJobFromHistory, type HistoryEntry } from '@/hooks/useJobHistory'
 import { Button } from '@/components/ui/Button'
 
-function JobRow({ entry, onRemove }: { entry: HistoryEntry; onRemove: () => void }) {
+function JobRow({
+  entry,
+  onRemove,
+  index,
+  total,
+}: {
+  entry: HistoryEntry
+  onRemove: () => void
+  index: number
+  total: number
+}) {
   const { data, isError } = useQuery({
     queryKey: ['job', entry.job_id],
     queryFn: () => getJobStatus(entry.job_id),
     retry: false,
-    staleTime: 30_000,
+    staleTime: 2_000,
+    refetchInterval: (q) => {
+      const status = q.state.data?.status
+      if (!status) return 3_000
+      return status === 'done' || status === 'error' ? false : 3_000
+    },
   })
 
   const expired = isError || (data?.status === 'error' && !data?.error_message)
   const date = new Date(entry.created_at).toLocaleString()
+  const isImagePhase =
+    !!data &&
+    !isError &&
+    (data.status === 'downloading_images' ||
+      (data.status === 'generating' && data.images_found > 0 && data.images_embedded < data.images_found))
+  const displayStatus = isImagePhase ? 'downloading_images' : data?.status
 
   return (
     <tr className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
@@ -28,7 +49,20 @@ function JobRow({ entry, onRemove }: { entry: HistoryEntry; onRemove: () => void
         )}
       </td>
       <td className="py-3 px-4">
-        <StatusBadge status={data?.status} isError={isError} />
+        <div className="space-y-0.5">
+          <StatusBadge status={displayStatus} isError={isError} prefix={`${index}/${total}.`} />
+          {data &&
+            !isError &&
+            data.status !== 'done' &&
+            data.status !== 'error' &&
+            (isImagePhase ? data.images_found > 0 : data.posts_found > 0) && (
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                {isImagePhase
+                  ? `(${data.images_embedded}/${data.images_found})`
+                  : `(${data.posts_crawled}/${data.posts_found})`}
+              </p>
+            )}
+        </div>
       </td>
       <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
         {data?.status === 'done' && data.posts_crawled > 0
@@ -92,7 +126,15 @@ function JobRow({ entry, onRemove }: { entry: HistoryEntry; onRemove: () => void
   )
 }
 
-function StatusBadge({ status, isError }: { status?: string; isError?: boolean }) {
+function StatusBadge({
+  status,
+  isError,
+  prefix,
+}: {
+  status?: string
+  isError?: boolean
+  prefix?: string
+}) {
   if (isError || !status) {
     return (
       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
@@ -107,31 +149,47 @@ function StatusBadge({ status, isError }: { status?: string; isError?: boolean }
     queued: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
     parsing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
     crawling: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    downloading_images: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
     generating: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  }
+  const labels: Record<string, string> = {
+    downloading_images: 'downloading images',
   }
 
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${styles[status] ?? styles.queued}`}
     >
-      {status}
+      {prefix ? `${prefix} ` : ''}
+      {labels[status] ?? status}
     </span>
   )
 }
 
 export function HistoryPage() {
   const [entries, setEntries] = useState<HistoryEntry[]>([])
+  const [cancelState, setCancelState] = useState<
+    Record<string, 'ok' | 'local' | 'pending' | undefined>
+  >({})
 
   useEffect(() => {
     setEntries(getJobHistory())
   }, [])
 
-  function handleRemove(job_id: string) {
+  async function handleRemove(job_id: string) {
+    setCancelState((prev) => ({ ...prev, [job_id]: 'pending' }))
+    const cancelled = await cancelJob(job_id).then(
+      () => true,
+      () => false,
+    )
+    setCancelState((prev) => ({ ...prev, [job_id]: cancelled ? 'ok' : 'local' }))
     removeJobFromHistory(job_id)
     setEntries((prev) => prev.filter((e) => e.job_id !== job_id))
+    window.setTimeout(() => setCancelState((prev) => ({ ...prev, [job_id]: undefined })), 2000)
   }
 
-  function handleClearAll() {
+  async function handleClearAll() {
+    await Promise.all(entries.map((e) => cancelJob(e.job_id).catch(() => undefined)))
     entries.forEach((e) => removeJobFromHistory(e.job_id))
     setEntries([])
   }
@@ -144,9 +202,19 @@ export function HistoryPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Saved in this browser. Files expire after 24 hours.
           </p>
+          {Object.values(cancelState).includes('ok') && (
+            <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+              ✅ Task removed and cancelled in backend.
+            </p>
+          )}
+          {Object.values(cancelState).includes('local') && (
+            <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
+              ⚠️ Removed locally, backend cancellation could not be confirmed.
+            </p>
+          )}
         </div>
         {entries.length > 0 && (
-          <Button variant="secondary" onClick={handleClearAll}>
+          <Button variant="secondary" onClick={() => void handleClearAll()}>
             Clear all
           </Button>
         )}
@@ -173,8 +241,14 @@ export function HistoryPage() {
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry) => (
-                <JobRow key={entry.job_id} entry={entry} onRemove={() => handleRemove(entry.job_id)} />
+              {entries.map((entry, i) => (
+                <JobRow
+                  key={entry.job_id}
+                  entry={entry}
+                  index={i}
+                  total={entries.length}
+                  onRemove={() => void handleRemove(entry.job_id)}
+                />
               ))}
             </tbody>
           </table>

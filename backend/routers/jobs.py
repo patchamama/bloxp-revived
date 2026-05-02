@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from models.job import JobStatus, JobStatusResponse
-from tasks.process_blog import create_job, get_state, submit_job, get_queue_position
+from tasks.process_blog import create_job, get_state, submit_job, get_queue_position, cancel_job
 
 router = APIRouter()
 
@@ -108,3 +108,10 @@ def get_job_status(job_id: str) -> JobStatusResponse:
         images_embedded=state.images_embedded,
         queue_position=queue_position,
     )
+
+
+@router.delete("/jobs/{job_id}", status_code=204)
+def delete_job(job_id: str) -> None:
+    existed = cancel_job(job_id)
+    if not existed:
+        raise HTTPException(status_code=404, detail="Job not found")

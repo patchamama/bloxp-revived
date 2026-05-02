@@ -1,4 +1,11 @@
-export type JobStatus = 'queued' | 'parsing' | 'crawling' | 'generating' | 'done' | 'error'
+export type JobStatus =
+  | 'queued'
+  | 'parsing'
+  | 'crawling'
+  | 'downloading_images'
+  | 'generating'
+  | 'done'
+  | 'error'
 
 export interface JobStatusResponse {
   job_id: string
