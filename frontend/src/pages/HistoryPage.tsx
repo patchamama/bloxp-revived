@@ -50,7 +50,15 @@ function JobRow({
       </td>
       <td className="py-3 px-4">
         <div className="space-y-0.5">
-          <StatusBadge status={displayStatus} isError={isError} prefix={`${index}/${total}.`} />
+          <StatusBadge
+            status={displayStatus}
+            isError={isError}
+            prefix={
+              data?.status !== 'done' && data?.status !== 'error'
+                ? `${index + 1}/${total}.`
+                : undefined
+            }
+          />
           {data &&
             !isError &&
             data.status !== 'done' &&
