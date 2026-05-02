@@ -58,6 +58,14 @@ def create_job() -> JobState:
     return state
 
 
+def set_job_source_url(job_id: str, source_url: str) -> None:
+    state = get_state(job_id)
+    if not state:
+        return
+    state.source_url = source_url
+    _save_state(state)
+
+
 # ── Queue management ──────────────────────────────────────────────────────────
 
 def _decode(v) -> str:
@@ -202,6 +210,23 @@ def _slugify(title: str) -> str:
     slug = re.sub(r"[\s_]+", "-", slug)
     slug = re.sub(r"-+", "-", slug).strip("-")
     return slug or "ebook"
+
+
+def _persist_job_metadata(state: JobState, posts_count: int) -> None:
+    try:
+        out_dir = epub_path(state.job_id).parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        data = {
+            "job_id": state.job_id,
+            "created_at": state.created_at,
+            "expires_at": state.expires_at,
+            "ebook_title": state.ebook_title,
+            "source_url": state.source_url,
+            "posts_count": posts_count,
+        }
+        (out_dir / "metadata.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        _log.exception("Could not persist metadata for job %s", state.job_id)
 
 
 @celery_app.task(bind=True)
@@ -402,3 +427,4 @@ def _generate_ebooks(
     state.status = JobStatus.done
     state.progress = 100
     _save_state(state)
+    _persist_job_metadata(state, len(posts))

@@ -26,6 +26,7 @@ class JobState(BaseModel):
     mobi_path: Optional[str] = None
     pdf_path: Optional[str] = None
     ebook_title: Optional[str] = None
+    source_url: Optional[str] = None
     created_at: float = 0.0
     expires_at: float = 0.0
 
@@ -43,4 +44,5 @@ class JobStatusResponse(BaseModel):
     has_mobi: bool = False
     has_pdf: bool = False
     ebook_title: Optional[str] = None
+    source_url: Optional[str] = None
     queue_position: Optional[int] = None

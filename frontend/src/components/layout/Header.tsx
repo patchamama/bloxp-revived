@@ -34,6 +34,9 @@ export function Header() {
           <NavLink to="/contact" className={linkClass}>
             Contact
           </NavLink>
+          <NavLink to="/admin" className={linkClass} title="Admin">
+            🔐
+          </NavLink>
         </nav>
       </div>
     </header>

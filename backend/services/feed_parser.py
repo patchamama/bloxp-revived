@@ -5,6 +5,7 @@ from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
 import feedparser
 import httpx
 from bs4 import BeautifulSoup
+from services.page_cache import get_cached_html, set_cached_html
 
 
 @dataclass
@@ -22,7 +23,17 @@ class FeedInfo:
 
 
 def _parse_url(url: str) -> Optional[tuple[feedparser.FeedParserDict, list[FeedPost]]]:
-    parsed = feedparser.parse(url)
+    cached = get_cached_html(url)
+    if cached:
+        parsed = feedparser.parse(cached)
+    else:
+        try:
+            resp = httpx.get(url, follow_redirects=True, timeout=15)
+            resp.raise_for_status()
+            set_cached_html(url, resp.text)
+            parsed = feedparser.parse(resp.text)
+        except Exception:
+            return None
     if parsed.bozo and not parsed.entries:
         return None
 
@@ -119,18 +130,27 @@ def _blogger_page_url(feed_url: str, start_index: int, max_results: int) -> str:
 
 def _discover_feed_url(site_url: str) -> Optional[str]:
     """Fetch the site HTML and look for RSS/Atom feed links."""
+    html = get_cached_html(site_url)
     try:
-        resp = httpx.get(site_url, follow_redirects=True, timeout=15)
-        resp.raise_for_status()
+        if html is None:
+            resp = httpx.get(site_url, follow_redirects=True, timeout=15)
+            resp.raise_for_status()
+            html = resp.text
+            set_cached_html(site_url, html)
+            base_url = str(resp.url)
+        else:
+            base_url = site_url
     except Exception:
-        return None
+        if html is None:
+            return None
+        base_url = site_url
 
-    soup = BeautifulSoup(resp.text, "lxml")
+    soup = BeautifulSoup(html, "lxml")
 
     for mime in ("application/rss+xml", "application/atom+xml", "application/feed+json"):
         tag = soup.find("link", rel="alternate", type=mime)
         if tag and tag.get("href"):
-            return urljoin(str(resp.url), tag["href"])
+            return urljoin(base_url, tag["href"])
 
     for path in ("/feed", "/feed/", "/rss", "/rss.xml", "/atom.xml", "/?feed=rss2"):
         candidate = urljoin(site_url.rstrip("/"), path)

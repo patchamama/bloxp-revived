@@ -47,6 +47,8 @@ This reimplementation has been on a to-do list for a long time. What finally mad
 | **Media-aware export** | Better image filtering/fetching and support for embedded video references |
 | **Async processing** | Jobs run in the background via Celery; progress tracked in real time |
 | **Runtime diagnostics** | Footer status line with FE/BE versions, Celery online state, running and queued tasks |
+| **24h page cache** | Raw blog pages are cached in Redis for 24h and reused across jobs/workers/users |
+| **Admin tools (dev/testing)** | Login-protected admin panel to inspect cache, Redis/Celery status, and stored ebooks |
 | **Auto cleanup** | Generated files expire after 24 hours |
 
 ---
@@ -295,9 +297,41 @@ Copy `.env.example` to `backend/.env` and adjust:
 | `POST` | `/api/jobs` | Create a new ebook job |
 | `GET` | `/api/jobs/:id` | Poll job status and progress |
 | `GET` | `/api/jobs/:id/download/:format` | Download `epub`, `mobi`, or `pdf` |
+| `DELETE` | `/api/jobs/:id` | Cancel/remove a job and cleanup generated artifacts |
 | `GET` | `/api/system/status` | Runtime diagnostics (Celery, running/pending counters, backend version) |
 | `POST` | `/api/contact` | Send a contact form message |
 | `GET` | `/api/health` | Health check + dynamic config (`max_posts_limit`) |
+
+### Admin API (dev/testing)
+
+All admin endpoints require `Authorization: Bearer <token>` from `/api/admin/login`.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/admin/login` | Admin login (default user in env example: `admin`) |
+| `GET` | `/api/admin/status` | Redis/Celery status |
+| `GET` | `/api/admin/cache/stats` | Global cache counters/size |
+| `GET` | `/api/admin/cache/entries` | Cached page entries (url, ttl, size) |
+| `DELETE` | `/api/admin/cache/entries/{key}` | Delete one cache entry |
+| `GET` | `/api/admin/ebooks` | Stored ebook artifacts (paths, sizes, expiry metadata) |
+| `DELETE` | `/api/admin/ebooks/{job_id}` | Delete/cancel a work and cleanup files |
+
+### Add admin users from CLI
+
+```bash
+chmod +x add_admin_user.sh
+./add_admin_user.sh <username> <password> [env_file]
+# example
+./add_admin_user.sh admin rayuela backend/.env
+```
+
+This updates `ADMIN_USERS_JSON` in the env file with PBKDF2-hashed credentials.
+
+### Cache behavior when sites are down
+
+- Crawlers read from Redis page cache first.
+- If page/feed HTML is already cached and the site/network is down, generation continues from cache.
+- Missing pages are fetched from network only when not already cached.
 
 ### Post limit override
 

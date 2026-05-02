@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import settings
-from routers import contact, download, jobs, system
+from routers import admin, contact, download, jobs, system
 
 APP_VERSION = settings.app_version
 app = FastAPI(title="Bloxp API", version=APP_VERSION)
@@ -24,6 +24,7 @@ app.include_router(jobs.router, prefix="/api")
 app.include_router(download.router, prefix="/api")
 app.include_router(contact.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 
 
 @app.get("/api/health")

@@ -18,6 +18,7 @@ export interface JobStatusResponse {
   has_mobi: boolean
   has_pdf: boolean
   ebook_title?: string
+  source_url?: string
   images_found: number
   images_embedded: number
   queue_position?: number

@@ -47,6 +47,8 @@ Esta reimplementación estuvo pendiente durante mucho tiempo. Lo que finalmente 
 | **Exportación con mejor media** | Mejor filtrado/descarga de imágenes y soporte para referencias de videos embebidos |
 | **Procesamiento asíncrono** | Los trabajos corren en background vía Celery; el progreso se trackea en tiempo real |
 | **Diagnóstico en tiempo real** | Línea de estado en el pie con versiones FE/BE, estado de Celery y tareas corriendo/en cola |
+| **Caché de páginas 24h** | Las páginas HTML crudas del blog se cachean en Redis por 24h y se reutilizan entre jobs/workers/usuarios |
+| **Herramientas admin (dev/testing)** | Panel admin con login para inspeccionar caché, estado Redis/Celery y ebooks almacenados |
 | **Limpieza automática** | Los archivos generados expiran después de 24 horas |
 
 ---
@@ -295,9 +297,41 @@ Copiá `.env.example` a `backend/.env` y ajustá según necesites:
 | `POST` | `/api/jobs` | Crear un nuevo job de ebook |
 | `GET` | `/api/jobs/:id` | Consultar estado y progreso del job |
 | `GET` | `/api/jobs/:id/download/:format` | Descargar `epub`, `mobi` o `pdf` |
+| `DELETE` | `/api/jobs/:id` | Cancelar/eliminar job y limpiar artefactos generados |
 | `GET` | `/api/system/status` | Diagnóstico runtime (Celery, contadores en ejecución/en cola, versión backend) |
 | `POST` | `/api/contact` | Enviar mensaje por el formulario de contacto |
 | `GET` | `/api/health` | Health check + configuración dinámica (`max_posts_limit`) |
+
+### API Admin (dev/testing)
+
+Todos los endpoints admin requieren `Authorization: Bearer <token>` obtenido en `/api/admin/login`.
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `POST` | `/api/admin/login` | Login admin (usuario por defecto en env example: `admin`) |
+| `GET` | `/api/admin/status` | Estado de Redis/Celery |
+| `GET` | `/api/admin/cache/stats` | Contadores/tamaño de caché global |
+| `GET` | `/api/admin/cache/entries` | Entradas cacheadas (url, ttl, tamaño) |
+| `DELETE` | `/api/admin/cache/entries/{key}` | Eliminar una entrada de caché |
+| `GET` | `/api/admin/ebooks` | Artefactos ebook almacenados (paths, tamaños, expiración) |
+| `DELETE` | `/api/admin/ebooks/{job_id}` | Eliminar/cancelar un work y limpiar archivos |
+
+### Agregar usuarios admin desde CLI
+
+```bash
+chmod +x add_admin_user.sh
+./add_admin_user.sh <username> <password> [env_file]
+# ejemplo
+./add_admin_user.sh admin rayuela backend/.env
+```
+
+Esto actualiza `ADMIN_USERS_JSON` en el env con credenciales hasheadas en PBKDF2.
+
+### Comportamiento del caché cuando el sitio está caído
+
+- Los crawlers leen primero desde caché Redis.
+- Si el HTML de página/feed ya está cacheado y el sitio/red está caído, la generación continúa desde caché.
+- Solo se consulta red para páginas faltantes que aún no están cacheadas.
 
 ### Límite de posts personalizado
 

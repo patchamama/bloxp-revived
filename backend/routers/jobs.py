@@ -5,7 +5,14 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from models.job import JobStatus, JobStatusResponse
-from tasks.process_blog import create_job, get_state, submit_job, get_queue_position, cancel_job
+from tasks.process_blog import (
+    create_job,
+    get_state,
+    submit_job,
+    get_queue_position,
+    cancel_job,
+    set_job_source_url,
+)
 
 router = APIRouter()
 
@@ -45,6 +52,7 @@ def create_job_endpoint(req: JobCreateRequest) -> dict:
     if req.type == "basic":
         if not req.feed_url.strip():
             raise HTTPException(status_code=422, detail="feed_url is required for basic jobs")
+        set_job_source_url(state.job_id, req.feed_url)
         payload = {
             "feed_url": req.feed_url,
             "links_to_footnotes": req.links_to_footnotes,
@@ -64,6 +72,7 @@ def create_job_endpoint(req: JobCreateRequest) -> dict:
             if not str(val).strip():
                 raise HTTPException(status_code=422, detail=f"{field} is required for advanced jobs")
 
+        set_job_source_url(state.job_id, req.site_url)
         payload = {
             "starting_url": req.starting_url,
             "starting_title": req.starting_title,
@@ -104,6 +113,7 @@ def get_job_status(job_id: str) -> JobStatusResponse:
         has_mobi=bool(state.mobi_path),
         has_pdf=bool(state.pdf_path),
         ebook_title=state.ebook_title,
+        source_url=state.source_url,
         images_found=state.images_found,
         images_embedded=state.images_embedded,
         queue_position=queue_position,

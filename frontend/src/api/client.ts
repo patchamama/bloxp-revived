@@ -11,7 +11,14 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     const text = await res.text().catch(() => res.statusText)
     throw new Error(text)
   }
-  return res.json() as Promise<T>
+  if (res.status === 204) {
+    return undefined as T
+  }
+  const text = await res.text()
+  if (!text) {
+    return undefined as T
+  }
+  return JSON.parse(text) as T
 }
 
 export function submitBasicJob(data: BasicJobRequest): Promise<{ job_id: string }> {
@@ -48,4 +55,68 @@ export function getSystemStatus(): Promise<SystemStatusResponse> {
 
 export function getHealth(): Promise<HealthResponse> {
   return apiFetch('/api/health')
+}
+
+function adminFetch<T>(path: string, token: string, init?: RequestInit): Promise<T> {
+  return apiFetch(path, {
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+      Authorization: `Bearer ${token}`,
+    },
+  })
+}
+
+export function adminLogin(username: string, password: string): Promise<{ token: string }> {
+  return apiFetch('/api/admin/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+}
+
+export function adminStatus(token: string): Promise<{ redis_ok: boolean; celery_ok: boolean; celery_workers: number }> {
+  return adminFetch('/api/admin/status', token)
+}
+
+export function adminCacheStats(token: string): Promise<{ keys: number; total_bytes: number; ttl_seconds: number }> {
+  return adminFetch('/api/admin/cache/stats', token)
+}
+
+export function adminCacheEntries(
+  token: string,
+  page = 1,
+  pageSize = 50,
+): Promise<{ total: number; page: number; page_size: number; items: Array<{ key: string; url: string; ttl_seconds: number; size_bytes: number }> }> {
+  return adminFetch(`/api/admin/cache/entries?page=${page}&page_size=${pageSize}`, token)
+}
+
+export function adminCacheSites(
+  token: string,
+): Promise<{ items: Array<{ site: string; pages_count: number; images_count_total: number; total_bytes: number; pages: Array<{ key: string; url: string; ttl_seconds: number; size_bytes: number; image_count: number }> }> }> {
+  return adminFetch('/api/admin/cache/sites', token)
+}
+
+export async function adminDeleteCacheEntry(token: string, key: string): Promise<void> {
+  await adminFetch(`/api/admin/cache/entries/${encodeURIComponent(key)}`, token, { method: 'DELETE' })
+}
+
+export async function adminDeleteCacheSite(token: string, site: string): Promise<void> {
+  await adminFetch(`/api/admin/cache/sites/${encodeURIComponent(site)}`, token, { method: 'DELETE' })
+}
+
+export async function adminDeleteAllCache(token: string): Promise<void> {
+  await adminFetch('/api/admin/cache/all', token, { method: 'DELETE' })
+}
+
+export function adminEbooks(token: string): Promise<{ items: Array<{ job_id: string; created_at: number | null; expires_at: number | null; status: string | null; ebook_title: string | null; source_url: string | null; dir_path: string; files: Array<{ name: string; path: string; size_bytes: number }> }> }> {
+  return adminFetch('/api/admin/ebooks', token)
+}
+
+export async function adminDeleteEbook(token: string, jobId: string): Promise<void> {
+  await adminFetch(`/api/admin/ebooks/${jobId}`, token, { method: 'DELETE' })
+}
+
+export async function adminDeleteAllEbooks(token: string): Promise<void> {
+  await adminFetch('/api/admin/ebooks/all', token, { method: 'DELETE' })
 }

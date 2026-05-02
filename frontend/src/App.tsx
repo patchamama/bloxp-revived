@@ -9,6 +9,7 @@ import { AboutPage } from '@/pages/AboutPage'
 import { FaqPage } from '@/pages/FaqPage'
 import { ContactPage } from '@/pages/ContactPage'
 import { HistoryPage } from '@/pages/HistoryPage'
+import { AdminPage } from '@/pages/AdminPage'
 
 const queryClient = new QueryClient()
 
@@ -27,6 +28,7 @@ export default function App() {
               <Route path="/faq" element={<FaqPage />} />
               <Route path="/contact" element={<ContactPage />} />
               <Route path="/history" element={<HistoryPage />} />
+              <Route path="/admin" element={<AdminPage />} />
             </Routes>
           </div>
           <Footer />

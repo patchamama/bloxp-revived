@@ -8,13 +8,9 @@ import { Button } from '@/components/ui/Button'
 function JobRow({
   entry,
   onRemove,
-  index,
-  total,
 }: {
   entry: HistoryEntry
   onRemove: () => void
-  index: number
-  total: number
 }) {
   const { data, isError } = useQuery({
     queryKey: ['job', entry.job_id],
@@ -38,6 +34,17 @@ function JobRow({
   const displayStatus = isImagePhase ? 'downloading_images' : data?.status
   const displayTitle =
     data && !isError && data.status === 'done' && data.ebook_title ? data.ebook_title : entry.title
+  const stepPrefix = (() => {
+    if (!displayStatus || displayStatus === 'done' || displayStatus === 'error') return undefined
+    const phaseMap: Record<string, string> = {
+      queued: '0/3.',
+      parsing: '0/3.',
+      crawling: '1/3.',
+      downloading_images: '2/3.',
+      generating: '3/3.',
+    }
+    return phaseMap[displayStatus]
+  })()
 
   return (
     <tr className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
@@ -55,11 +62,7 @@ function JobRow({
           <StatusBadge
             status={displayStatus}
             isError={isError}
-            prefix={
-              data?.status !== 'done' && data?.status !== 'error'
-                ? `${index + 1}/${total}.`
-                : undefined
-            }
+            prefix={stepPrefix}
           />
           {data &&
             !isError &&
@@ -251,12 +254,10 @@ export function HistoryPage() {
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry, i) => (
+              {entries.map((entry) => (
                 <JobRow
                   key={entry.job_id}
                   entry={entry}
-                  index={i}
-                  total={entries.length}
                   onRemove={() => void handleRemove(entry.job_id)}
                 />
               ))}
