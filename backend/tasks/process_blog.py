@@ -63,20 +63,29 @@ def _decode(v) -> str:
 
 
 def _active_count() -> int:
-    """Count active jobs, pruning stale entries (crashed workers)."""
+    """Count active jobs, pruning stale entries (including never-started queued jobs)."""
     members = _redis.smembers(_ACTIVE_KEY)
     stale = []
     active = 0
     for m in members:
         jid = _decode(m)
         state = get_state(jid)
-        if state and state.status not in (JobStatus.done, JobStatus.error):
+        if state and state.status in (JobStatus.parsing, JobStatus.crawling, JobStatus.generating):
             active += 1
         else:
             stale.append(m)
     if stale:
         _redis.srem(_ACTIVE_KEY, *stale)
     return active
+
+
+def get_runtime_queue_stats() -> dict[str, int]:
+    """Return runtime queue counters used by diagnostics/admin UI."""
+    return {
+        "active_jobs": _active_count(),
+        "pending_jobs": int(_redis.llen(_QUEUE_KEY)),
+        "max_concurrent_jobs": settings.max_concurrent_jobs,
+    }
 
 
 def get_queue_position(job_id: str) -> int:

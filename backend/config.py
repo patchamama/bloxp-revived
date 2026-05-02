@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    app_version: str = "2.0.0"
     redis_url: str = "redis://localhost:6379/0"
     generated_dir: str = "./generated"
     smtp_host: str = ""

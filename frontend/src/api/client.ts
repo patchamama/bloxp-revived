@@ -1,5 +1,6 @@
 import type { BasicJobRequest, AdvancedJobRequest } from '@/types/ebook'
 import type { JobStatusResponse } from '@/types/job'
+import type { SystemStatusResponse } from '@/types/system'
 
 const BASE = import.meta.env.VITE_API_URL ?? ''
 
@@ -30,4 +31,8 @@ export function submitAdvancedJob(data: AdvancedJobRequest): Promise<{ job_id: s
 
 export function getJobStatus(jobId: string): Promise<JobStatusResponse> {
   return apiFetch(`/api/jobs/${jobId}`)
+}
+
+export function getSystemStatus(): Promise<SystemStatusResponse> {
+  return apiFetch('/api/system/status')
 }

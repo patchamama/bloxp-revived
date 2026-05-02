@@ -5,9 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from routers import contact, download, jobs
+from config import settings
+from routers import contact, download, jobs, system
 
-app = FastAPI(title="Bloxp API", version="2.0.0")
+APP_VERSION = settings.app_version
+app = FastAPI(title="Bloxp API", version=APP_VERSION)
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,11 +23,12 @@ app.add_middleware(
 app.include_router(jobs.router, prefix="/api")
 app.include_router(download.router, prefix="/api")
 app.include_router(contact.router, prefix="/api")
+app.include_router(system.router, prefix="/api")
 
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"ok": True, "version": "2.0.0"}
+    return {"ok": True, "version": APP_VERSION}
 
 
 # ── Frontend static files (production build) ──────────────────────────────────
