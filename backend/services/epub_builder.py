@@ -398,12 +398,16 @@ _OUR_CLASSES = frozenset({
 
 
 def _strip_inline_styles(root) -> None:
-    """Remove inline style/font attrs and CMS class names that break typography."""
+    """Remove inline style/font attrs, CMS class names, and bare wrapper tags."""
     for tag in root.find_all(True):
         tag.attrs.pop("style", None)
         tag.attrs.pop("size", None)
         tag.attrs.pop("face", None)
         tag.attrs.pop("color", None)
+        tag.attrs.pop("align", None)
+        tag.attrs.pop("bgcolor", None)
+        tag.attrs.pop("dir", None)
+        tag.attrs.pop("lang", None)
         if tag.name == "img":
             tag.attrs.pop("width", None)
             tag.attrs.pop("height", None)
@@ -417,6 +421,13 @@ def _strip_inline_styles(root) -> None:
                 tag["class"] = kept
             else:
                 del tag.attrs["class"]
+
+    # Unwrap <span> and <font> tags left with no attributes — they were purely
+    # decorative/CMS wrappers (color, size, font-family) now stripped.
+    # Semantic tags (<em>, <i>, <strong>, <b>, <u>, <sup>, <sub>) are left intact.
+    for tag in list(root.find_all(["span", "font"])):
+        if tag.parent is not None and not tag.attrs:
+            tag.unwrap()
 
 
 def _collapse_double_spaces(root) -> None:
@@ -540,6 +551,128 @@ def _split_br_lines(tag) -> list[str]:
     return segments
 
 
+def _normalize_verse_wrapper_lines(wrapper, soup) -> None:
+    """Convert line-per-<p> verse wrappers into stanza paragraphs with <br/> line breaks.
+
+    Output shape inside .verse-block:
+    - One <p> per stanza, with lines separated by <br/>
+    - One empty <p class="verse-stanza"> between stanzas
+    """
+    from bs4 import NavigableString
+
+    children = list(wrapper.children)
+    if not children:
+        return
+
+    built: list = []
+    stanza_p = soup.new_tag("p")
+    stanza_has_content = False
+    emitted_lines: list[str] = []
+
+    def _norm_line(text: str) -> str:
+        return re.sub(r"\s+", " ", text.replace("\u00a0", " ")).strip()
+
+    def _flush_stanza() -> None:
+        nonlocal stanza_p, stanza_has_content
+        if stanza_has_content:
+            built.append(stanza_p)
+        stanza_p = soup.new_tag("p")
+        stanza_has_content = False
+
+    def _append_line_from(tag) -> None:
+        nonlocal stanza_has_content
+        # Convert paragraph content to logical verse lines split by <br>,
+        # then drop leading lines that are duplicated from the tail of
+        # already-emitted content (common in some Blogger verse markup).
+        raw = tag.get_text("\n", strip=True)
+        lines = [_norm_line(ln) for ln in raw.split("\n") if _norm_line(ln)]
+        if not lines:
+            return
+
+        max_k = min(len(lines), len(emitted_lines))
+        overlap = 0
+        for k in range(max_k, 1, -1):
+            if emitted_lines[-k:] == lines[:k]:
+                overlap = k
+                break
+        if overlap:
+            lines = lines[overlap:]
+            if not lines:
+                return
+
+        for line in lines:
+            if stanza_has_content:
+                stanza_p.append(soup.new_tag("br"))
+            stanza_p.append(line)
+            stanza_has_content = True
+            emitted_lines.append(line)
+
+    for child in children:
+        if isinstance(child, NavigableString) and not child.strip():
+            child.extract()
+            continue
+        if not (hasattr(child, "name") and child.name == "p"):
+            # Keep unexpected nodes as-is after flushing current stanza
+            _flush_stanza()
+            built.append(child.extract() if child.parent is not None else child)
+            continue
+
+        is_empty = not child.get_text(strip=True) and not child.find(["img", "figure"])
+        if is_empty:
+            child.decompose()
+            _flush_stanza()
+            if built and "verse-stanza" not in (built[-1].get("class") or []):
+                sep = soup.new_tag("p")
+                sep["class"] = ["verse-stanza"]
+                built.append(sep)
+            continue
+
+        _append_line_from(child)
+        child.decompose()
+
+    _flush_stanza()
+
+    # Remove leading/trailing stanza separators
+    while built and hasattr(built[0], "get") and "verse-stanza" in (built[0].get("class") or []):
+        built.pop(0)
+    while built and hasattr(built[-1], "get") and "verse-stanza" in (built[-1].get("class") or []):
+        built.pop()
+
+    # Final pass: trim duplicated line prefixes between consecutive stanza paragraphs.
+    prev_lines: list[str] | None = None
+    for node in built:
+        if not hasattr(node, "name") or node.name != "p":
+            continue
+        if "verse-stanza" in (node.get("class") or []):
+            continue
+        lines = [_norm_line(ln) for ln in node.get_text("\n", strip=True).split("\n") if _norm_line(ln)]
+        if not lines:
+            continue
+        if prev_lines:
+            max_k = min(len(prev_lines), len(lines))
+            overlap = 0
+            for k in range(max_k, 1, -1):
+                if prev_lines[-k:] == lines[:k]:
+                    overlap = k
+                    break
+            if overlap:
+                lines = lines[overlap:]
+                if not lines:
+                    node.decompose()
+                    continue
+                node.clear()
+                for i, line in enumerate(lines):
+                    if i:
+                        node.append(soup.new_tag("br"))
+                    node.append(line)
+        prev_lines = lines
+
+    wrapper.clear()
+    for node in built:
+        if getattr(node, "parent", None) is None:
+            wrapper.append(node)
+
+
 def _detect_verse_blocks(root, soup) -> None:
     """Mark verse content with class 'verse-block'.
 
@@ -600,6 +733,10 @@ def _detect_verse_blocks(root, soup) -> None:
             continue
         if p.find_parent(class_="verse-block"):
             continue
+        # Only start a run from a line that looks like verse — prevents prose paragraphs
+        # (e.g. editorial intros) from anchoring a run that then captures the real poem.
+        if not _is_verse_line(p.get_text(strip=True)):
+            continue
 
         run: list = [p]
         node = p.next_sibling
@@ -633,8 +770,9 @@ def _detect_verse_blocks(root, soup) -> None:
             else:
                 break
 
-        # Require 4+ actual <p> elements (stanza-break divs don't count)
-        p_count = sum(1 for el in run if hasattr(el, "name") and el.name == "p")
+        # Require 4+ actual verse-line <p> elements (empty stanza separators don't count)
+        p_count = sum(1 for el in run
+                      if hasattr(el, "name") and el.name == "p" and el.get_text(strip=True))
         if p_count < 4:
             continue
 
@@ -671,6 +809,10 @@ def _detect_verse_blocks(root, soup) -> None:
             prev_was_stanza = is_empty
             wrapper.append(el.extract())
 
+    # Also normalize any pre-existing verse wrappers from source HTML.
+    for wrapper in root.find_all(class_="verse-block"):
+        _normalize_verse_wrapper_lines(wrapper, soup)
+
 
 # ── Quoted-paragraph detection ────────────────────────────────────────────────
 
@@ -695,40 +837,65 @@ def _mark_quoted_paragraphs(root) -> None:
 
 
 def _split_br_paragraphs(root) -> None:
-    """Split any <p> or <div> that has direct <br> children into multiple <p> elements.
+    """Split <p>/<div> with direct <br> children into multiple <p> elements.
 
-    Converts br-delimited inline content into proper paragraph structure so that
-    verse detection (Case 2) works uniformly and epub readers render correctly.
+    <br> run rules:
+    - 1-2 consecutive <br> → tight line separator (just split, no extra empty <p>)
+    - 3+ consecutive <br> → stanza break → insert empty <p> between segments
+
+    An empty <p> is appended after each split to mark the original element
+    boundary as a stanza separator. _detect_verse_blocks promotes it to
+    verse-stanza; empty-node cleanup removes it otherwise.
+
+    Elements with no text content (e.g. <div><br/></div>) are left untouched —
+    _detect_verse_blocks / _is_stanza_div handles them as stanza separators.
     """
     from bs4 import NavigableString, Tag
 
     for tag in list(root.find_all(["p", "div"])):
         if tag.parent is None:
             continue
-        # Must have at least one direct <br> child
         if not any(hasattr(c, "name") and c.name == "br" for c in tag.children):
             continue
-        # Skip if it contains block-level children (structural wrapper, not a text run)
         if any(hasattr(c, "name") and c.name in _BLOCK_TAGS and c.name != "br"
                for c in tag.children):
             continue
+        # Skip elements with no text — stanza-break placeholders like <div><br/></div>
+        # are preserved for _detect_verse_blocks to handle via _is_stanza_div.
+        if not tag.get_text(strip=True):
+            continue
 
         children_snap = list(tag.children)
-        segments: list[list] = [[]]
+        segments: list[tuple[list, int]] = []  # (content_nodes, br_run_after)
+        current: list = []
+        br_run = 0
+
         for child in children_snap:
             if hasattr(child, "name") and child.name == "br":
-                segments.append([])
+                br_run += 1
             else:
-                segments[-1].append(child)
+                if br_run > 0:
+                    segments.append((current, br_run))
+                    current = []
+                    br_run = 0
+                current.append(child)
+        segments.append((current, 0))
 
         if len(segments) <= 1:
             continue
 
-        for seg in segments:
+        for i, (seg_nodes, br_after) in enumerate(segments):
             p = Tag(name="p")
-            for node in seg:
+            for node in seg_nodes:
                 p.append(node.extract() if node.parent is not None else node)
-            tag.insert_before(p)
+            if p.get_text(strip=True) or p.find(True):
+                tag.insert_before(p)
+            # 3+ consecutive <br> = stanza break → empty <p> between segments
+            if br_after >= 3 and i < len(segments) - 1:
+                tag.insert_before(Tag(name="p"))
+
+        # Empty <p> marks original element boundary as stanza separator
+        tag.insert_before(Tag(name="p"))
         tag.decompose()
 
 

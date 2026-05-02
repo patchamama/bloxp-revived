@@ -101,6 +101,15 @@ def _clean_for_pdf(content: str, post_url: str, image_cache: dict) -> str:
         tag.attrs.pop("size", None)
         tag.attrs.pop("face", None)
         tag.attrs.pop("color", None)
+        tag.attrs.pop("align", None)
+        tag.attrs.pop("bgcolor", None)
+        tag.attrs.pop("dir", None)
+        tag.attrs.pop("lang", None)
+
+    # Unwrap bare <span>/<font> with no remaining attributes
+    for tag in list(root.find_all(["span", "font"])):
+        if tag.parent is not None and not tag.attrs:
+            tag.unwrap()
 
     return root.decode_contents() if body else str(root)
 

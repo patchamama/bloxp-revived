@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import re
 import time
 import uuid
@@ -22,6 +23,7 @@ from storage.file_manager import epub_path, mobi_path, pdf_path
 from tasks.celery_app import celery_app
 
 _redis = redis_lib.from_url(settings.redis_url)
+_log = logging.getLogger(__name__)
 
 # ── Job queue keys ────────────────────────────────────────────────────────────
 _ACTIVE_KEY = "bloxp:active"    # SET  — job IDs currently being processed
@@ -300,16 +302,22 @@ def _generate_ebooks(
     err = convert_epub_to_mobi(ep, mp)
     if not err:
         state.mobi_path = str(mp)
+    else:
+        _log.warning("MOBI conversion unavailable for job %s: %s", state.job_id, err)
     state.progress = 92
     _save_state(state)
 
     pp = pdf_path(state.job_id)
-    build_pdf(
-        posts, title, pp,
-        image_cache=image_cache if include_images else None,
-        processed_contents=processed_contents if include_images else None,
-    )
-    state.pdf_path = str(pp)
+    try:
+        build_pdf(
+            posts, title, pp,
+            image_cache=image_cache if include_images else None,
+            processed_contents=processed_contents if include_images else None,
+        )
+        state.pdf_path = str(pp)
+    except Exception as exc:
+        # PDF is optional. Keep the job successful when EPUB already exists.
+        _log.exception("PDF generation failed for job %s: %s", state.job_id, exc)
 
     state.status = JobStatus.done
     state.progress = 100

@@ -61,7 +61,7 @@ export function WorkingPage() {
         {data.status === 'queued' && data.queue_position && data.queue_position > 0 && (
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {data.queue_position === 1
-              ? 'You're next — processing will start soon.'
+              ? "You're next — processing will start soon."
               : `${data.queue_position - 1} job${data.queue_position - 1 > 1 ? 's' : ''} ahead of you.`}
           </p>
         )}
