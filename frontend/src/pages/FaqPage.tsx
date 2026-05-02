@@ -10,7 +10,7 @@ const faqs: FaqItem[] = [
   },
   {
     q: 'How many posts can I convert?',
-    a: 'By default up to 250 posts. In Advanced mode you can set a custom maximum up to 500.',
+    a: 'By default up to 250 posts. In Advanced mode you can set a custom maximum up to 999 and choose a post range.',
   },
   {
     q: 'What ebook formats are available?',

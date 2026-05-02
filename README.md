@@ -278,6 +278,7 @@ Copy `.env.example` to `backend/.env` and adjust:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `MAX_POSTS_LIMIT` | `9999` | Global backend cap for `max_posts` and post ranges (used by Basic and Advanced) |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection string |
 | `GENERATED_DIR` | `../generated` | Directory for output ebooks |
 | `SMTP_HOST` | — | SMTP server for contact form (optional) |
@@ -296,7 +297,7 @@ Copy `.env.example` to `backend/.env` and adjust:
 | `GET` | `/api/jobs/:id/download/:format` | Download `epub`, `mobi`, or `pdf` |
 | `GET` | `/api/system/status` | Runtime diagnostics (Celery, running/pending counters, backend version) |
 | `POST` | `/api/contact` | Send a contact form message |
-| `GET` | `/api/health` | Health check |
+| `GET` | `/api/health` | Health check + dynamic config (`max_posts_limit`) |
 
 ### Post limit override
 

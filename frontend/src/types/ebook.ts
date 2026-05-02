@@ -3,6 +3,9 @@ export interface BasicJobRequest {
   links_to_footnotes: boolean
   add_toc: boolean
   include_images: boolean
+  max_posts: number
+  post_range_start: number
+  post_range_end: number
 }
 
 export interface AdvancedJobRequest {
@@ -14,6 +17,8 @@ export interface AdvancedJobRequest {
   links_to_footnotes: boolean
   add_toc: boolean
   max_posts: number
+  post_range_start: number
+  post_range_end: number
   custom_search_opt: boolean
   tag_name: string
   attr_name: string

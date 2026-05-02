@@ -4,6 +4,7 @@ const MAX_HISTORY = 50
 export interface HistoryEntry {
   job_id: string
   title: string
+  source_url?: string
   created_at: number // unix ms
 }
 
@@ -20,10 +21,17 @@ function saveHistory(entries: HistoryEntry[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
 }
 
-export function addJobToHistory(job_id: string, title: string): void {
+export function addJobToHistory(job_id: string, title: string, source_url?: string): void {
   const entries = loadHistory()
+  const existing = entries.find((e) => e.job_id === job_id)
   const filtered = entries.filter((e) => e.job_id !== job_id)
-  const updated = [{ job_id, title, created_at: Date.now() }, ...filtered].slice(0, MAX_HISTORY)
+  const updatedEntry: HistoryEntry = {
+    job_id,
+    title,
+    source_url: source_url ?? existing?.source_url,
+    created_at: existing?.created_at ?? Date.now(),
+  }
+  const updated = [updatedEntry, ...filtered].slice(0, MAX_HISTORY)
   saveHistory(updated)
 }
 

@@ -8,6 +8,7 @@ import { ErrorPanel } from '@/components/ui/ErrorPanel'
 import { ExportSettingsSection } from './ExportSettingsSection'
 import { useEbookStore } from '@/stores/ebookStore'
 import { useSubmitAdvancedJob } from '@/hooks/useSubmitJob'
+import { useBackendHealth } from '@/hooks/useBackendHealth'
 
 export function AdvancedEbookForm() {
   const {
@@ -19,10 +20,16 @@ export function AdvancedEbookForm() {
     linksToFootnotes,
     addTOC,
     maxPosts,
+    postRangeStart,
+    postRangeEnd,
     setField,
+    saveMaxPostsPreference,
   } = useEbookStore()
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [maxPostsSaved, setMaxPostsSaved] = useState(false)
   const mutation = useSubmitAdvancedJob()
+  const { data: health } = useBackendHealth()
+  const maxLimit = health?.max_posts_limit ?? 9999
 
   const validate = () => {
     const errs: Record<string, string> = {}
@@ -42,6 +49,12 @@ export function AdvancedEbookForm() {
     }
     setErrors({})
     mutation.mutate()
+  }
+
+  const handleSaveMaxPosts = () => {
+    saveMaxPostsPreference()
+    setMaxPostsSaved(true)
+    window.setTimeout(() => setMaxPostsSaved(false), 1800)
   }
 
   return (
@@ -99,10 +112,62 @@ export function AdvancedEbookForm() {
           label="Maximum posts"
           type="number"
           min={1}
-          max={500}
+          max={maxLimit}
           value={maxPosts}
-          onChange={(e) => setField('maxPosts', parseInt(e.target.value, 10) || 250)}
+          onChange={(e) => {
+            const parsed = Number.parseInt(e.target.value, 10)
+            if (Number.isNaN(parsed)) return
+            const nextMax = Math.min(maxLimit, Math.max(1, parsed))
+            setField('maxPosts', nextMax)
+            setField('postRangeEnd', nextMax)
+            if (postRangeStart > nextMax) {
+              setField('postRangeStart', nextMax)
+            }
+          }}
         />
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            id="postRangeStart"
+            label="Range: from post"
+            type="number"
+            min={1}
+            max={maxLimit}
+            value={postRangeStart}
+            onChange={(e) => {
+              const parsed = Number.parseInt(e.target.value, 10)
+              if (Number.isNaN(parsed)) return
+              const clamped = Math.min(maxLimit, Math.max(1, parsed))
+              setField('postRangeStart', clamped)
+            }}
+          />
+          <Input
+            id="postRangeEnd"
+            label="Range: to post"
+            type="number"
+            min={1}
+            max={maxLimit}
+            value={postRangeEnd}
+            onChange={(e) => {
+              const parsed = Number.parseInt(e.target.value, 10)
+              if (Number.isNaN(parsed)) return
+              const clamped = Math.min(maxLimit, Math.max(1, parsed))
+              setField('postRangeEnd', clamped)
+            }}
+          />
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Posts will be limited to this range (inclusive), e.g. 200 to 456.
+        </p>
+        <div className="flex items-center gap-3">
+          <Button type="button" variant="secondary" onClick={handleSaveMaxPosts}>
+            Save
+          </Button>
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {maxPostsSaved
+              ? 'Saved in this browser for new advanced jobs.'
+              : 'Saves this limit in localStorage.'}
+          </span>
+        </div>
         <div className="flex flex-wrap gap-6">
           <Checkbox
             id="linksToFootnotes"

@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl
 
 
 class BasicJobRequest(BaseModel):
@@ -7,6 +7,9 @@ class BasicJobRequest(BaseModel):
     links_to_footnotes: bool = False
     add_toc: bool = True
     include_images: bool = True
+    max_posts: int = Field(default=250, ge=1)
+    post_range_start: int = Field(default=1, ge=1)
+    post_range_end: int | None = Field(default=None, ge=1)
 
 
 class CustomSelector(BaseModel):
@@ -26,5 +29,7 @@ class AdvancedJobRequest(BaseModel):
     links_to_footnotes: bool = False
     add_toc: bool = True
     include_images: bool = True
-    max_posts: int = 250
+    max_posts: int = Field(default=250, ge=1)
+    post_range_start: int = Field(default=1, ge=1)
+    post_range_end: int | None = Field(default=None, ge=1)
     custom_selector: Optional[CustomSelector] = None

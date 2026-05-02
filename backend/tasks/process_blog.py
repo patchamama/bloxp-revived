@@ -130,7 +130,7 @@ def _finish_job(job_id: str) -> None:
         # entry expired — skip and try next
 
 
-def _extract_max_posts(url: str) -> tuple[str, int]:
+def _extract_max_posts(url: str, default_limit: int = 250) -> tuple[str, int]:
     """Strip ?noMaxPosts from URL and return (clean_url, limit).
     ?noMaxPosts=true  → 500
     ?noMaxPosts=N     → N
@@ -142,14 +142,14 @@ def _extract_max_posts(url: str) -> tuple[str, int]:
     if raw is not None:
         val = raw[0]
         if val.lower() == "true" or val == "":
-            limit = 500
+            limit = settings.max_posts_limit
         else:
             try:
-                limit = max(1, int(val))
+                limit = min(settings.max_posts_limit, max(1, int(val)))
             except ValueError:
-                limit = 500
+                limit = default_limit
     else:
-        limit = 250
+        limit = default_limit
     clean_query = urlencode({k: v[0] for k, v in qs.items()})
     clean_url = urlunparse(parsed._replace(query=clean_query))
     return clean_url, limit
@@ -172,12 +172,20 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
         return
 
     try:
+        range_start = req.post_range_start
+        range_end = req.post_range_end if req.post_range_end is not None else req.max_posts
+        range_start = min(range_start, settings.max_posts_limit)
+        range_end = min(range_end, settings.max_posts_limit)
+        if range_end < range_start:
+            raise ValueError("post_range_end must be greater than or equal to post_range_start")
+        fetch_limit = min(settings.max_posts_limit, max(req.max_posts, range_end))
+
         # Phase 1: parse feed
         state.status = JobStatus.parsing
         state.progress = 5
         _save_state(state)
 
-        clean_url, max_posts = _extract_max_posts(req.feed_url)
+        clean_url, max_posts = _extract_max_posts(req.feed_url, default_limit=fetch_limit)
         feed = parse_feed(clean_url, max_posts=max_posts)
         if not feed:
             state.status = JobStatus.error
@@ -185,7 +193,7 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
             _save_state(state)
             return
 
-        post_urls = [p.url for p in feed.posts]
+        post_urls = [p.url for p in feed.posts][range_start - 1:range_end]
         state.posts_found = len(post_urls)
         state.status = JobStatus.crawling
         state.progress = 10
@@ -198,7 +206,12 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
             _save_state(state)
 
         posts = asyncio.run(
-            crawl_from_feed(post_urls, max_posts=max_posts, on_progress=on_progress, include_images=req.include_images)
+            crawl_from_feed(
+                post_urls,
+                max_posts=len(post_urls),
+                on_progress=on_progress,
+                include_images=req.include_images,
+            )
         )
 
         _generate_ebooks(state, posts, feed.title, feed.description, req.add_toc, req.links_to_footnotes, req.include_images)
@@ -221,9 +234,17 @@ def process_advanced(self, job_id: str, payload: dict[str, Any]) -> None:
         return
 
     try:
+        range_start = req.post_range_start
+        range_end = req.post_range_end if req.post_range_end is not None else req.max_posts
+        range_start = min(range_start, settings.max_posts_limit)
+        range_end = min(range_end, settings.max_posts_limit)
+        if range_end < range_start:
+            raise ValueError("post_range_end must be greater than or equal to post_range_start")
+        fetch_limit = min(settings.max_posts_limit, max(req.max_posts, range_end))
+
         state.status = JobStatus.crawling
         state.progress = 5
-        state.posts_found = req.max_posts
+        state.posts_found = max(0, range_end - range_start + 1)
         _save_state(state)
 
         custom = req.custom_selector
@@ -237,12 +258,14 @@ def process_advanced(self, job_id: str, payload: dict[str, Any]) -> None:
             crawl_from_url(
                 req.starting_url,
                 req.starting_title,
-                max_posts=req.max_posts,
+                max_posts=fetch_limit,
                 custom_selector=custom,
                 on_progress=on_progress,
                 include_images=req.include_images,
             )
         )
+
+        posts = posts[range_start - 1:range_end]
 
         state.posts_found = len(posts)
         _generate_ebooks(

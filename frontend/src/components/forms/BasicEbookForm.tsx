@@ -8,7 +8,13 @@ import { useEbookStore } from '@/stores/ebookStore'
 import { useSubmitBasicJob } from '@/hooks/useSubmitJob'
 
 export function BasicEbookForm() {
-  const { feedUrl, linksToFootnotes, addTOC, includeImages, setField } = useEbookStore()
+  const {
+    feedUrl,
+    linksToFootnotes,
+    addTOC,
+    includeImages,
+    setField,
+  } = useEbookStore()
   const [validationError, setValidationError] = useState('')
   const mutation = useSubmitBasicJob()
 

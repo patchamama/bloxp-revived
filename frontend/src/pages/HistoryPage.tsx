@@ -23,6 +23,9 @@ function JobRow({ entry, onRemove }: { entry: HistoryEntry; onRemove: () => void
           {entry.title}
         </div>
         <div className="text-xs text-gray-400 mt-0.5">{date}</div>
+        {entry.source_url && (
+          <div className="text-xs text-gray-400 truncate max-w-xs">{entry.source_url}</div>
+        )}
       </td>
       <td className="py-3 px-4">
         <StatusBadge status={data?.status} isError={isError} />

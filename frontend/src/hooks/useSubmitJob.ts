@@ -6,7 +6,16 @@ import { addJobToHistory } from '@/hooks/useJobHistory'
 
 export function useSubmitBasicJob() {
   const navigate = useNavigate()
-  const { feedUrl, linksToFootnotes, addTOC, includeImages, setActiveJobId } = useEbookStore()
+  const {
+    feedUrl,
+    linksToFootnotes,
+    addTOC,
+    includeImages,
+    maxPosts,
+    postRangeStart,
+    postRangeEnd,
+    setActiveJobId,
+  } = useEbookStore()
 
   return useMutation({
     mutationFn: () =>
@@ -15,10 +24,13 @@ export function useSubmitBasicJob() {
         links_to_footnotes: linksToFootnotes,
         add_toc: addTOC,
         include_images: includeImages,
+        max_posts: maxPosts,
+        post_range_start: postRangeStart,
+        post_range_end: postRangeEnd,
       }),
     onSuccess: ({ job_id }) => {
       setActiveJobId(job_id)
-      addJobToHistory(job_id, feedUrl || 'Untitled')
+      addJobToHistory(job_id, 'Generating ebook…', feedUrl || '')
       navigate(`/working/${job_id}`)
     },
   })
@@ -39,6 +51,8 @@ export function useSubmitAdvancedJob() {
         links_to_footnotes: store.linksToFootnotes,
         add_toc: store.addTOC,
         max_posts: store.maxPosts,
+        post_range_start: store.postRangeStart,
+        post_range_end: store.postRangeEnd,
         custom_search_opt: store.customSearchOpt,
         tag_name: store.tagName,
         attr_name: store.attrName,
@@ -48,7 +62,11 @@ export function useSubmitAdvancedJob() {
       }),
     onSuccess: ({ job_id }) => {
       store.setActiveJobId(job_id)
-      addJobToHistory(job_id, store.siteTitle || store.startingUrl || 'Untitled')
+      addJobToHistory(
+        job_id,
+        store.siteTitle || 'Generating ebook…',
+        store.siteUrl || store.startingUrl || '',
+      )
       navigate(`/working/${job_id}`)
     },
   })

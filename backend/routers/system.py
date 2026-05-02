@@ -20,6 +20,7 @@ def system_status() -> dict:
     reserved_tasks = sum(len(tasks or []) for tasks in (reserved_map or {}).values())
     return {
         "backend_version": settings.app_version,
+        "max_posts_limit": settings.max_posts_limit,
         "celery_running": celery_running,
         "celery_workers": workers,
         "active_jobs": active_tasks,

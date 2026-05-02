@@ -100,6 +100,7 @@ def _embed_images(
     post_url: str,
     book: epub.EpubBook,
     img_counter: list[int],
+    post_number: int,
     on_image: Callable[[int], None] | None = None,
     image_cache: dict | None = None,
 ) -> str:
@@ -148,7 +149,7 @@ def _embed_images(
         ext = _ext_for_mime(mime)
         idx = img_counter[0]
         img_counter[0] += 1
-        img_name = f"image{idx:04d}.{ext}"
+        img_name = f"image_{post_number}_{idx:04d}.{ext}"
         img_path = f"images/{img_name}"
 
         # Also index by epub-relative path so pdf_builder can look up by src
@@ -1103,6 +1104,7 @@ def build_epub(
         if include_images:
             content = _embed_images(
                 content, post.url, book, img_counter,
+                post_number=i + 1,
                 on_image=on_image, image_cache=image_cache,
             )
 

@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-02 — Config update
+
+- Backend max-post cap is now centrally configurable via `MAX_POSTS_LIMIT` (currently `9999`).
+- `/api/health` now exposes `max_posts_limit` so frontend limits can be dynamic.
+- Advanced form now consumes backend-provided max limit instead of hardcoded values.
+
 ## 2026-05-02 — Last 10 commits summary (EN)
 
 - **9dfa57f** — Added system status monitoring endpoint and footer diagnostics.

@@ -28,7 +28,7 @@ app.include_router(system.router, prefix="/api")
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"ok": True, "version": APP_VERSION}
+    return {"ok": True, "version": APP_VERSION, "max_posts_limit": settings.max_posts_limit}
 
 
 # ── Frontend static files (production build) ──────────────────────────────────
