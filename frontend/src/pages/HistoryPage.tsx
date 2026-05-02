@@ -1,16 +1,20 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { cancelJob, getJobStatus } from '@/api/client'
+import { adminForceStartJob, cancelJob, getJobStatus } from '@/api/client'
 import { getJobHistory, removeJobFromHistory, type HistoryEntry } from '@/hooks/useJobHistory'
 import { Button } from '@/components/ui/Button'
 
 function JobRow({
   entry,
   onRemove,
+  adminToken,
+  onForceStart,
 }: {
   entry: HistoryEntry
   onRemove: () => void
+  adminToken?: string
+  onForceStart?: () => void
 }) {
   const { data, isError } = useQuery({
     queryKey: ['job', entry.job_id],
@@ -72,8 +76,8 @@ function JobRow({
             (isImagePhase ? data.images_found > 0 : data.posts_found > 0) && (
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
                 {isImagePhase
-                  ? `(${data.images_embedded}/${data.images_found})`
-                  : `(${data.posts_crawled}/${data.posts_found})`}
+                  ? `(${data.images_embedded}/${data.images_found}${data.images_cached > 0 ? `, ${data.images_cached} cached` : ''})`
+                  : `(${data.posts_crawled}/${data.posts_found}${data.posts_cached > 0 ? `, ${data.posts_cached} cached` : ''})`}
               </p>
             )}
         </div>
@@ -128,6 +132,21 @@ function JobRow({
         ) : null}
       </td>
       <td className="py-3 px-4 text-right">
+        {data?.status === 'queued' && adminToken && (
+          <button
+            onClick={async () => {
+              try {
+                await adminForceStartJob(adminToken, entry.job_id)
+                onForceStart?.()
+              } catch (err: any) {
+                window.alert(err?.message ?? 'Force start failed')
+              }
+            }}
+            className="text-xs text-blue-600 hover:underline mr-3"
+          >
+            Force start
+          </button>
+        )}
         <button
           onClick={onRemove}
           className="text-xs text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
@@ -182,6 +201,7 @@ function StatusBadge({
 
 export function HistoryPage() {
   const [entries, setEntries] = useState<HistoryEntry[]>([])
+  const [adminToken, setAdminToken] = useState<string>('')
   const [cancelState, setCancelState] = useState<
     Record<string, 'ok' | 'local' | 'pending' | undefined>
   >({})
@@ -194,6 +214,7 @@ export function HistoryPage() {
       .filter((e) => now - e.created_at > 24 * 60 * 60 * 1000)
       .forEach((e) => removeJobFromHistory(e.job_id))
     setEntries(fresh)
+    setAdminToken(localStorage.getItem('bloxp_admin_token') ?? '')
   }, [])
 
   async function handleRemove(job_id: string) {
@@ -265,6 +286,8 @@ export function HistoryPage() {
                 <JobRow
                   key={entry.job_id}
                   entry={entry}
+                  adminToken={adminToken}
+                  onForceStart={() => setEntries((prev) => [...prev])}
                   onRemove={() => void handleRemove(entry.job_id)}
                 />
               ))}

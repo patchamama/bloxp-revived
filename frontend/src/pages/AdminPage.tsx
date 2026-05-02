@@ -9,6 +9,7 @@ import {
   adminDeleteEbook,
   adminEbooks,
   adminLogin,
+  adminRegenerateEbook,
   adminStatus,
 } from '@/api/client'
 
@@ -193,7 +194,30 @@ export function AdminPage() {
           <div className="space-y-2 text-sm">
             {filteredEbooks.map((e) => (
                 <div key={e.job_id} className="border rounded p-2">
-                  <div className="font-medium">{e.ebook_title ?? e.job_id}</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium">{e.ebook_title ?? e.job_id}</div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="text-xs text-blue-600 underline"
+                        onClick={async () => {
+                          await adminRegenerateEbook(token, e.job_id, true)
+                          await loadAll()
+                        }}
+                      >
+                        Regenerate (cache)
+                      </button>
+                      <button
+                        className="text-xs text-orange-600 underline"
+                        onClick={async () => {
+                          if (!window.confirm('Regenerate from scratch (clear site cache first)?')) return
+                          await adminRegenerateEbook(token, e.job_id, false)
+                          await loadAll()
+                        }}
+                      >
+                        Regenerate (from scratch)
+                      </button>
+                    </div>
+                  </div>
                   <div className="text-xs text-gray-500">
                     <span className="align-middle">status=</span> <StatusBadge status={e.status} /> · posts={e.posts_count ?? '—'} · source={e.source_url ? <a className="text-blue-600 underline" href={e.source_url} target="_blank" rel="noreferrer">{e.source_url}</a> : '—'} · dir={e.dir_path}
                   </div>

@@ -4,6 +4,7 @@ from typing import Any
 import re
 import zipfile
 import xml.etree.ElementTree as ET
+from urllib.parse import urlparse
 
 import redis as redis_lib
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,7 +14,14 @@ from config import settings
 from services.admin_auth import authenticate_admin, issue_token, require_admin_auth
 from storage.file_manager import cleanup_job
 from tasks.celery_app import celery_app
-from tasks.process_blog import cancel_job, get_state
+from tasks.process_blog import (
+    cancel_job,
+    get_state,
+    create_job,
+    submit_job,
+    set_job_source_url,
+    force_start_queued_job,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 _redis = redis_lib.from_url(settings.redis_url, decode_responses=True)
@@ -71,6 +79,9 @@ def _count_meaningful_images(html: str) -> int:
 class AdminLoginRequest(BaseModel):
     username: str
     password: str
+
+class RegenerateRequest(BaseModel):
+    use_cache: bool = True
 
 
 @router.post("/login")
@@ -172,26 +183,14 @@ def cache_sites(_: dict = Depends(require_admin_auth)) -> dict[str, Any]:
 
 @router.delete("/cache/sites/{site}", status_code=204)
 def delete_cache_site(site: str, _: dict = Depends(require_admin_auth)) -> None:
-    keys: list[str] = []
-    for key in _redis.scan_iter("page_cache:*"):
-        raw = _redis.get(key)
-        if not raw:
-            continue
-        try:
-            payload = json.loads(raw)
-            url = payload.get("url", "")
-        except Exception:
-            continue
-        host = url.split("/")[2] if "://" in url else "unknown"
-        if host == site:
-            keys.append(key)
-    if keys:
-        _redis.delete(*keys)
+    _delete_cache_by_host(site)
 
 
 @router.delete("/cache/all", status_code=204)
 def delete_cache_all(_: dict = Depends(require_admin_auth)) -> None:
     keys = list(_redis.scan_iter("page_cache:*"))
+    keys += list(_redis.scan_iter("processed_post:*"))
+    keys += list(_redis.scan_iter("rendered_post:*"))
     if keys:
         _redis.delete(*keys)
 
@@ -250,3 +249,63 @@ def delete_ebook(job_id: str, _: dict = Depends(require_admin_auth)) -> None:
     cancel_job(job_id)
     cleanup_job(job_id)
     _redis.delete(f"job:{job_id}")
+
+
+def _delete_cache_by_host(host: str) -> int:
+    deleted = 0
+    for prefix in ("page_cache:*", "processed_post:*", "rendered_post:*"):
+        keys_to_delete: list[str] = []
+        for key in _redis.scan_iter(prefix):
+            raw = _redis.get(key)
+            if not raw:
+                continue
+            try:
+                payload = json.loads(raw)
+                url = payload.get("url", "")
+            except Exception:
+                continue
+            h = urlparse(url).netloc if url else ""
+            if h == host:
+                keys_to_delete.append(key)
+        if keys_to_delete:
+            _redis.delete(*keys_to_delete)
+            deleted += len(keys_to_delete)
+    return deleted
+
+
+@router.post("/ebooks/{job_id}/regenerate")
+def regenerate_ebook(job_id: str, req: RegenerateRequest, _: dict = Depends(require_admin_auth)) -> dict[str, Any]:
+    state = get_state(job_id)
+    source_url = state.source_url if state else None
+    if not source_url:
+        meta = _read_metadata_file(Path(settings.generated_dir) / job_id)
+        source_url = meta.get("source_url")
+    if not source_url:
+        raise HTTPException(status_code=422, detail="Cannot regenerate: source_url missing")
+
+    if not req.use_cache:
+        host = urlparse(source_url).netloc
+        if host:
+            _delete_cache_by_host(host)
+
+    new_state = create_job()
+    set_job_source_url(new_state.job_id, source_url)
+    payload = {
+        "feed_url": source_url,
+        "links_to_footnotes": True,
+        "add_toc": True,
+        "include_images": True,
+        "max_posts": settings.max_posts_limit,
+        "post_range_start": 1,
+        "post_range_end": settings.max_posts_limit,
+    }
+    submit_job(new_state.job_id, "basic", payload)
+    return {"job_id": new_state.job_id, "source_url": source_url, "use_cache": req.use_cache}
+
+
+@router.post("/jobs/{job_id}/force-start")
+def force_start_job(job_id: str, _: dict = Depends(require_admin_auth)) -> dict[str, Any]:
+    ok = force_start_queued_job(job_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Queued job not found")
+    return {"ok": True, "job_id": job_id}

@@ -120,3 +120,21 @@ export async function adminDeleteEbook(token: string, jobId: string): Promise<vo
 export async function adminDeleteAllEbooks(token: string): Promise<void> {
   await adminFetch('/api/admin/ebooks/all', token, { method: 'DELETE' })
 }
+
+export function adminRegenerateEbook(
+  token: string,
+  jobId: string,
+  useCache: boolean,
+): Promise<{ job_id: string; source_url: string; use_cache: boolean }> {
+  return adminFetch(`/api/admin/ebooks/${jobId}/regenerate`, token, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ use_cache: useCache }),
+  })
+}
+
+export function adminForceStartJob(token: string, jobId: string): Promise<{ ok: boolean; job_id: string }> {
+  return adminFetch(`/api/admin/jobs/${jobId}/force-start`, token, {
+    method: 'POST',
+  })
+}

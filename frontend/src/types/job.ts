@@ -13,6 +13,7 @@ export interface JobStatusResponse {
   progress: number
   posts_found: number
   posts_crawled: number
+  posts_cached: number
   error_message?: string
   has_epub: boolean
   has_mobi: boolean
@@ -21,5 +22,6 @@ export interface JobStatusResponse {
   source_url?: string
   images_found: number
   images_embedded: number
+  images_cached: number
   queue_position?: number
 }

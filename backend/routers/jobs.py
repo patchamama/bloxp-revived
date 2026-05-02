@@ -108,6 +108,7 @@ def get_job_status(job_id: str) -> JobStatusResponse:
         progress=state.progress,
         posts_found=state.posts_found,
         posts_crawled=state.posts_crawled,
+        posts_cached=state.posts_cached,
         error_message=state.error_message,
         has_epub=bool(state.epub_path),
         has_mobi=bool(state.mobi_path),
@@ -116,6 +117,7 @@ def get_job_status(job_id: str) -> JobStatusResponse:
         source_url=state.source_url,
         images_found=state.images_found,
         images_embedded=state.images_embedded,
+        images_cached=state.images_cached,
         queue_position=queue_position,
     )
 

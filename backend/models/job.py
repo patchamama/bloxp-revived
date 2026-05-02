@@ -19,8 +19,10 @@ class JobState(BaseModel):
     progress: int = 0
     posts_found: int = 0
     posts_crawled: int = 0
+    posts_cached: int = 0
     images_found: int = 0
     images_embedded: int = 0
+    images_cached: int = 0
     error_message: Optional[str] = None
     epub_path: Optional[str] = None
     mobi_path: Optional[str] = None
@@ -37,8 +39,10 @@ class JobStatusResponse(BaseModel):
     progress: int
     posts_found: int
     posts_crawled: int
+    posts_cached: int = 0
     images_found: int = 0
     images_embedded: int = 0
+    images_cached: int = 0
     error_message: Optional[str] = None
     has_epub: bool = False
     has_mobi: bool = False

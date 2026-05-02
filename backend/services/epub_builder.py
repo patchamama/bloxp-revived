@@ -11,6 +11,7 @@ from ebooklib import epub
 from PIL import Image
 
 from services.crawler import Post
+from services.rendered_post_cache import get_rendered_post, set_rendered_post
 
 # EPUB-compatible image formats
 _EPUB_MIME = {
@@ -101,7 +102,7 @@ def _embed_images(
     book: epub.EpubBook,
     img_counter: list[int],
     post_number: int,
-    on_image: Callable[[int], None] | None = None,
+    on_image: Callable[[int, bool], None] | None = None,
     image_cache: dict | None = None,
 ) -> str:
     """Download all <img> in html, embed in book, rewrite src to relative path.
@@ -131,8 +132,10 @@ def _embed_images(
 
         img_parent = img_tag.parent  # capture before possible decompose
 
+        cached_hit = False
         if image_cache is not None and abs_url in image_cache:
             data, mime = image_cache[abs_url]
+            cached_hit = True
         else:
             result = _fetch_image(abs_url, referer=post_url)
             if not result:
@@ -163,7 +166,7 @@ def _embed_images(
         book.add_item(epub_img)
 
         if on_image:
-            on_image(img_counter[0])
+            on_image(img_counter[0], cached_hit)
 
         img_tag["src"] = img_path
         img_tag.attrs.pop("srcset", None)
@@ -1068,7 +1071,7 @@ def build_epub(
     add_toc: bool = True,
     links_to_footnotes: bool = False,
     include_images: bool = True,
-    on_image: Callable[[int], None] | None = None,
+    on_image: Callable[[int, bool], None] | None = None,
 ) -> tuple[Path, dict, list[str]]:
     """Returns (output_path, image_cache, processed_contents).
 
@@ -1098,8 +1101,13 @@ def build_epub(
     for i, post in enumerate(posts):
         content = post.content or "<p>No content</p>"
 
-        # _clean_content first: converts image-href links to <img> so _embed_images picks them up
-        content = _clean_content(content)
+        cached_rendered = get_rendered_post(post.url or f"post-{i}", content)
+        if cached_rendered is not None:
+            content = cached_rendered
+        else:
+            # _clean_content first: converts image-href links to <img> so _embed_images picks them up
+            content = _clean_content(content)
+            set_rendered_post(post.url or f"post-{i}", post.content or "<p>No content</p>", content)
 
         if include_images:
             content = _embed_images(

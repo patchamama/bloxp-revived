@@ -162,6 +162,34 @@ def submit_job(job_id: str, task: str, payload: dict) -> None:
         _redis.rpush(_QUEUE_KEY, json.dumps({"job_id": job_id, "task": task, "payload": payload}))
 
 
+def force_start_queued_job(job_id: str) -> bool:
+    """Admin action: prioritize/start a queued job."""
+    entry_found: dict | None = None
+    kept: list[str] = []
+    for raw in _redis.lrange(_QUEUE_KEY, 0, -1):
+        entry = json.loads(_decode(raw))
+        if entry.get("job_id") == job_id and entry_found is None:
+            entry_found = entry
+            continue
+        kept.append(json.dumps(entry))
+    if entry_found is None:
+        return False
+
+    pipe = _redis.pipeline()
+    pipe.delete(_QUEUE_KEY)
+    if kept:
+        pipe.rpush(_QUEUE_KEY, *kept)
+    pipe.execute()
+
+    if _active_count() < settings.max_concurrent_jobs:
+        _redis.sadd(_ACTIVE_KEY, job_id)
+        _launch(entry_found["task"], job_id, entry_found["payload"])
+    else:
+        # Put it at queue front so it starts next
+        _redis.lpush(_QUEUE_KEY, json.dumps(entry_found))
+    return True
+
+
 def _finish_job(job_id: str) -> None:
     """Free the active slot and start the next queued job if one exists."""
     _redis.srem(_ACTIVE_KEY, job_id)
@@ -266,8 +294,9 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
         _save_state(state)
 
         # Phase 2: crawl
-        def on_progress(crawled: int, total: int) -> None:
+        def on_progress(crawled: int, total: int, cached: int) -> None:
             state.posts_crawled = crawled
+            state.posts_cached = cached
             state.progress = 10 + int(crawled / max(total, 1) * 60)
             _save_state(state)
 
@@ -315,8 +344,9 @@ def process_advanced(self, job_id: str, payload: dict[str, Any]) -> None:
 
         custom = req.custom_selector
 
-        def on_progress(crawled: int, total: int) -> None:
+        def on_progress(crawled: int, total: int, cached: int) -> None:
             state.posts_crawled = crawled
+            state.posts_cached = cached
             state.progress = 5 + int(crawled / max(total, 1) * 65)
             _save_state(state)
 
@@ -387,8 +417,14 @@ def _generate_ebooks(
 
     _save_state(state)
 
-    def on_image(embedded: int) -> None:
+    images_cached = 0
+
+    def on_image(embedded: int, was_cached: bool = False) -> None:
+        nonlocal images_cached
+        if was_cached:
+            images_cached += 1
         state.images_embedded = embedded
+        state.images_cached = images_cached
         if state.images_found > 0:
             state.progress = 75 + int((embedded / state.images_found) * 10)
         _save_state(state)
