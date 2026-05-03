@@ -51,19 +51,27 @@ export function WorkingPage() {
     )
   }
 
+  const queuePos = Number(data.queue_position ?? 0)
+  const hasQueuePos = Number.isFinite(queuePos) && queuePos > 0
+
   return (
     <main className="max-w-2xl mx-auto px-4 py-16 space-y-8">
       <div className="space-y-1">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          {data.status === 'queued' && data.queue_position && data.queue_position > 0
-            ? `Position ${data.queue_position} in queue…`
+          {data.status === 'queued' && hasQueuePos
+            ? `Position ${queuePos} in queue…`
             : STATUS_MESSAGES[data.status]}
         </h1>
-        {data.status === 'queued' && data.queue_position && data.queue_position > 0 && (
+        {data.status === 'queued' && hasQueuePos && (
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            {data.queue_position === 1
+            {queuePos === 1
               ? "You're next — processing will start soon."
-              : `${data.queue_position - 1} job${data.queue_position - 1 > 1 ? 's' : ''} ahead of you.`}
+              : `${queuePos - 1} job${queuePos - 1 > 1 ? 's' : ''} ahead of you.`}
+          </p>
+        )}
+        {data.status === 'queued' && !hasQueuePos && (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Waiting for an available worker…
           </p>
         )}
         {data.status === 'crawling' && data.posts_found > 0 && (
@@ -81,7 +89,7 @@ export function WorkingPage() {
         )}
       </div>
 
-      <ProgressBar value={data.progress} />
+      {data.status === 'queued' ? <Spinner /> : <ProgressBar value={data.progress} />}
 
       {data.status === 'done' && (
         <div className="space-y-3">
