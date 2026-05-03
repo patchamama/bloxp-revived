@@ -103,6 +103,133 @@ def get_runtime_queue_stats() -> dict[str, int]:
     }
 
 
+def list_runtime_tasks() -> dict[str, list[dict[str, Any]]]:
+    now = time.time()
+    running: list[dict[str, Any]] = []
+    pending: list[dict[str, Any]] = []
+    running_ids: set[str] = set()
+
+    for m in _redis.smembers(_ACTIVE_KEY):
+        jid = _decode(m)
+        state = get_state(jid)
+        if not state:
+            continue
+        running_ids.add(jid)
+        running.append(
+            {
+                "job_id": jid,
+                "status": state.status,
+                "source_url": state.source_url,
+                "created_at": state.created_at,
+                "elapsed_seconds": max(0, int(now - state.created_at)),
+                "progress": state.progress,
+                "posts_crawled": state.posts_crawled,
+                "posts_cached": state.posts_cached,
+                "posts_found": state.posts_found,
+                "images_embedded": state.images_embedded,
+                "images_cached": state.images_cached,
+                "images_found": state.images_found,
+            }
+        )
+
+    # Enrich from Celery active tasks so UI matches footer counters even when
+    # Redis active set and worker state are briefly out of sync.
+    try:
+        inspector = celery_app.control.inspect(timeout=1.0)
+        active_map = inspector.active() if inspector else None
+    except Exception:
+        active_map = None
+
+    job_by_task_id: dict[str, str] = {}
+    for key in _redis.scan_iter(f"{_TASK_KEY_PREFIX}*"):
+        jid = _decode(key).replace(_TASK_KEY_PREFIX, "", 1)
+        tid_raw = _redis.get(key)
+        if tid_raw:
+            job_by_task_id[_decode(tid_raw)] = jid
+
+    for tasks in (active_map or {}).values():
+        for task in (tasks or []):
+            tid = task.get("id")
+            if not tid:
+                continue
+            jid = job_by_task_id.get(tid)
+            if not jid or jid in running_ids:
+                continue
+            state = get_state(jid)
+            if not state:
+                continue
+            running_ids.add(jid)
+            running.append(
+                {
+                    "job_id": jid,
+                    "status": state.status,
+                    "source_url": state.source_url,
+                    "created_at": state.created_at,
+                    "elapsed_seconds": max(0, int(now - state.created_at)),
+                    "progress": state.progress,
+                    "posts_crawled": state.posts_crawled,
+                    "posts_cached": state.posts_cached,
+                    "posts_found": state.posts_found,
+                    "images_embedded": state.images_embedded,
+                    "images_cached": state.images_cached,
+                    "images_found": state.images_found,
+                }
+            )
+
+    # Fallback reconciliation: include any job state currently in running phases
+    # even if queue/celery mapping is temporarily inconsistent.
+    running_statuses = {
+        JobStatus.parsing,
+        JobStatus.crawling,
+        JobStatus.downloading_images,
+        JobStatus.generating,
+    }
+    for key in _redis.scan_iter("job:*"):
+        jid = _decode(key).replace("job:", "", 1)
+        if jid in running_ids:
+            continue
+        state = get_state(jid)
+        if not state or state.status not in running_statuses:
+            continue
+        running_ids.add(jid)
+        running.append(
+            {
+                "job_id": jid,
+                "status": state.status,
+                "source_url": state.source_url,
+                "created_at": state.created_at,
+                "elapsed_seconds": max(0, int(now - state.created_at)),
+                "progress": state.progress,
+                "posts_crawled": state.posts_crawled,
+                "posts_cached": state.posts_cached,
+                "posts_found": state.posts_found,
+                "images_embedded": state.images_embedded,
+                "images_cached": state.images_cached,
+                "images_found": state.images_found,
+            }
+        )
+
+    queue = _redis.lrange(_QUEUE_KEY, 0, -1)
+    for i, raw in enumerate(queue, start=1):
+        entry = json.loads(_decode(raw))
+        jid = entry.get("job_id")
+        state = get_state(jid) if jid else None
+        created_at = state.created_at if state else now
+        pending.append(
+            {
+                "job_id": jid,
+                "status": (state.status if state else JobStatus.queued),
+                "source_url": (state.source_url if state else None),
+                "created_at": created_at,
+                "elapsed_seconds": max(0, int(now - created_at)),
+                "queue_position": i,
+            }
+        )
+
+    running.sort(key=lambda x: x["created_at"])
+    return {"running": running, "pending": pending}
+
+
 def get_queue_position(job_id: str) -> int:
     """Return 1-based position in the pending queue, 0 if not waiting."""
     for i, raw in enumerate(_redis.lrange(_QUEUE_KEY, 0, -1)):
@@ -136,6 +263,8 @@ def _remove_from_pending(job_id: str) -> None:
 def cancel_job(job_id: str) -> bool:
     """Cancel queued/running job and delete all artifacts/state."""
     existed = bool(get_state(job_id))
+    was_active = bool(_redis.sismember(_ACTIVE_KEY, job_id))
+    was_queued = get_queue_position(job_id) > 0
 
     _remove_from_pending(job_id)
     _redis.srem(_ACTIVE_KEY, job_id)
@@ -143,14 +272,14 @@ def cancel_job(job_id: str) -> bool:
     task_id = _redis.get(f"{_TASK_KEY_PREFIX}{job_id}")
     if task_id:
         try:
-            celery_app.control.revoke(task_id, terminate=True, signal="SIGTERM")
+            celery_app.control.revoke(_decode(task_id), terminate=True, signal="SIGTERM")
         except Exception:
             pass
         _redis.delete(f"{_TASK_KEY_PREFIX}{job_id}")
 
     _redis.delete(f"job:{job_id}")
     cleanup_job(job_id)
-    return existed
+    return existed or was_active or was_queued or bool(task_id)
 
 
 def submit_job(job_id: str, task: str, payload: dict) -> None:

@@ -1,6 +1,7 @@
 import hashlib
 import json
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
 
 import redis as redis_lib
 
@@ -11,8 +12,21 @@ _TTL = settings.processed_post_cache_ttl_seconds
 _PIPELINE_VERSION = "v1"
 
 
+def _normalize_url(url: str) -> str:
+    u = (url or "").strip()
+    if not u:
+        return u
+    p = urlparse(u)
+    scheme = (p.scheme or "https").lower()
+    netloc = p.netloc.lower()
+    path = p.path or "/"
+    if path != "/" and path.endswith("/"):
+        path = path.rstrip("/")
+    return urlunparse((scheme, netloc, path, "", p.query, ""))
+
+
 def _post_key(url: str, include_images: bool) -> str:
-    payload = f"{url}|include_images={int(include_images)}|{_PIPELINE_VERSION}"
+    payload = f"{_normalize_url(url)}|include_images={int(include_images)}|{_PIPELINE_VERSION}"
     h = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     return f"processed_post:{h}"
 

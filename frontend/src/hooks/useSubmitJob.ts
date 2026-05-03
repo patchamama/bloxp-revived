@@ -4,6 +4,12 @@ import { submitBasicJob, submitAdvancedJob } from '@/api/client'
 import { useEbookStore } from '@/stores/ebookStore'
 import { addJobToHistory } from '@/hooks/useJobHistory'
 
+function normalizeUrl(url: string): string {
+  const u = (url || '').trim()
+  if (!u) return u
+  return u.includes('://') ? u : `https://${u}`
+}
+
 export function useSubmitBasicJob() {
   const navigate = useNavigate()
   const {
@@ -20,7 +26,7 @@ export function useSubmitBasicJob() {
   return useMutation({
     mutationFn: () =>
       submitBasicJob({
-        feed_url: feedUrl,
+        feed_url: normalizeUrl(feedUrl),
         links_to_footnotes: linksToFootnotes,
         add_toc: addTOC,
         include_images: includeImages,
@@ -30,7 +36,7 @@ export function useSubmitBasicJob() {
       }),
     onSuccess: ({ job_id }) => {
       setActiveJobId(job_id)
-      addJobToHistory(job_id, 'Generating ebook…', feedUrl || '')
+      addJobToHistory(job_id, 'Generating ebook…', normalizeUrl(feedUrl) || '')
       navigate(`/working/${job_id}`)
     },
   })
@@ -43,9 +49,9 @@ export function useSubmitAdvancedJob() {
   return useMutation({
     mutationFn: () =>
       submitAdvancedJob({
-        starting_url: store.startingUrl,
+        starting_url: normalizeUrl(store.startingUrl),
         starting_title: store.startingTitle,
-        site_url: store.siteUrl,
+        site_url: normalizeUrl(store.siteUrl),
         site_title: store.siteTitle,
         site_description: store.siteDescription,
         links_to_footnotes: store.linksToFootnotes,
@@ -65,7 +71,7 @@ export function useSubmitAdvancedJob() {
       addJobToHistory(
         job_id,
         store.siteTitle || 'Generating ebook…',
-        store.siteUrl || store.startingUrl || '',
+        normalizeUrl(store.siteUrl || store.startingUrl || ''),
       )
       navigate(`/working/${job_id}`)
     },

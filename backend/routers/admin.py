@@ -21,12 +21,14 @@ from tasks.process_blog import (
     submit_job,
     set_job_source_url,
     force_start_queued_job,
+    list_runtime_tasks,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 _redis = redis_lib.from_url(settings.redis_url, decode_responses=True)
 _IMG_SRC_RE = re.compile(r"<img\b[^>]*\bsrc=[\"']([^\"']+)[\"']", re.IGNORECASE)
 _IMG_SKIP = ("icon18_email", "icon18_edit", "blank.gif", "favicon", "s16/", "s24/", "s28/", "s32/")
+_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
 
 
 def _read_metadata_file(job_dir: Path) -> dict[str, Any]:
@@ -60,6 +62,36 @@ def _extract_epub_title(job_dir: Path) -> str | None:
             return title or None
     except Exception:
         return None
+
+
+def _extract_epub_source_url(job_dir: Path) -> str | None:
+    ep = job_dir / "output.epub"
+    if not ep.exists():
+        return None
+    try:
+        with zipfile.ZipFile(ep, "r") as zf:
+            names = [n for n in zf.namelist() if n.endswith(".xhtml") or n.endswith(".html")]
+            for name in names:
+                try:
+                    raw = zf.read(name).decode("utf-8", errors="ignore")
+                except Exception:
+                    continue
+                if "original-url" in raw or "Fuente original" in raw:
+                    m = _URL_RE.search(raw)
+                    if m:
+                        return m.group(0)
+            # fallback: first URL seen in chapters
+            for name in names:
+                try:
+                    raw = zf.read(name).decode("utf-8", errors="ignore")
+                except Exception:
+                    continue
+                m = _URL_RE.search(raw)
+                if m:
+                    return m.group(0)
+    except Exception:
+        return None
+    return None
 
 
 def _count_meaningful_images(html: str) -> int:
@@ -111,12 +143,13 @@ def admin_status(_: dict = Depends(require_admin_auth)) -> dict[str, Any]:
 def cache_stats(_: dict = Depends(require_admin_auth)) -> dict[str, Any]:
     count = 0
     total_bytes = 0
-    for key in _redis.scan_iter("page_cache:*"):
-        raw = _redis.get(key)
-        if raw is None:
-            continue
-        count += 1
-        total_bytes += len(raw.encode("utf-8"))
+    for pattern in ("page_cache:*", "processed_post:*", "rendered_post:*", "image_cache:*"):
+        for key in _redis.scan_iter(pattern):
+            raw = _redis.get(key)
+            if raw is None:
+                continue
+            count += 1
+            total_bytes += len(raw.encode("utf-8"))
     return {
         "keys": count,
         "total_bytes": total_bytes,
@@ -191,6 +224,7 @@ def delete_cache_all(_: dict = Depends(require_admin_auth)) -> None:
     keys = list(_redis.scan_iter("page_cache:*"))
     keys += list(_redis.scan_iter("processed_post:*"))
     keys += list(_redis.scan_iter("rendered_post:*"))
+    keys += list(_redis.scan_iter("image_cache:*"))
     if keys:
         _redis.delete(*keys)
 
@@ -216,6 +250,7 @@ def list_ebooks(_: dict = Depends(require_admin_auth)) -> dict[str, Any]:
         created_fallback = d.stat().st_ctime
         expires_fallback = created_fallback + settings.job_ttl_seconds
         ebook_title_fallback = _extract_epub_title(d) or job_id
+        source_fallback = meta.get("source_url") or _extract_epub_source_url(d)
         items.append(
             {
                 "job_id": job_id,
@@ -223,7 +258,7 @@ def list_ebooks(_: dict = Depends(require_admin_auth)) -> dict[str, Any]:
                 "expires_at": state.expires_at if state else meta.get("expires_at", expires_fallback),
                 "status": state.status if state else "orphaned",
                 "ebook_title": state.ebook_title if state and state.ebook_title else meta.get("ebook_title", ebook_title_fallback),
-                "source_url": state.source_url if state else meta.get("source_url"),
+                "source_url": state.source_url if state and state.source_url else source_fallback,
                 "posts_count": state.posts_crawled if state else meta.get("posts_count"),
                 "dir_path": str(d),
                 "files": files,
@@ -253,7 +288,7 @@ def delete_ebook(job_id: str, _: dict = Depends(require_admin_auth)) -> None:
 
 def _delete_cache_by_host(host: str) -> int:
     deleted = 0
-    for prefix in ("page_cache:*", "processed_post:*", "rendered_post:*"):
+    for prefix in ("page_cache:*", "processed_post:*", "rendered_post:*", "image_cache:*"):
         keys_to_delete: list[str] = []
         for key in _redis.scan_iter(prefix):
             raw = _redis.get(key)
@@ -276,10 +311,11 @@ def _delete_cache_by_host(host: str) -> int:
 @router.post("/ebooks/{job_id}/regenerate")
 def regenerate_ebook(job_id: str, req: RegenerateRequest, _: dict = Depends(require_admin_auth)) -> dict[str, Any]:
     state = get_state(job_id)
-    source_url = state.source_url if state else None
+    source_url = state.source_url if state and state.source_url else None
     if not source_url:
-        meta = _read_metadata_file(Path(settings.generated_dir) / job_id)
-        source_url = meta.get("source_url")
+        job_dir = Path(settings.generated_dir) / job_id
+        meta = _read_metadata_file(job_dir)
+        source_url = meta.get("source_url") or _extract_epub_source_url(job_dir)
     if not source_url:
         raise HTTPException(status_code=422, detail="Cannot regenerate: source_url missing")
 
@@ -309,3 +345,14 @@ def force_start_job(job_id: str, _: dict = Depends(require_admin_auth)) -> dict[
     if not ok:
         raise HTTPException(status_code=404, detail="Queued job not found")
     return {"ok": True, "job_id": job_id}
+
+
+@router.get("/tasks")
+def admin_tasks(_: dict = Depends(require_admin_auth)) -> dict[str, Any]:
+    return list_runtime_tasks()
+
+
+@router.post("/tasks/{job_id}/kill")
+def admin_kill_task(job_id: str, _: dict = Depends(require_admin_auth)) -> dict[str, Any]:
+    existed = cancel_job(job_id)
+    return {"ok": bool(existed), "job_id": job_id}

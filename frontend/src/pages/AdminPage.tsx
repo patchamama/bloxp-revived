@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   adminDeleteAllCache,
   adminDeleteAllEbooks,
@@ -8,10 +9,13 @@ import {
   adminDeleteCacheSite,
   adminDeleteEbook,
   adminEbooks,
+  adminKillTask,
   adminLogin,
+  adminTasks,
   adminRegenerateEbook,
   adminStatus,
 } from '@/api/client'
+import { addJobToHistory } from '@/hooks/useJobHistory'
 
 const TOKEN_KEY = 'bloxp_admin_token'
 
@@ -28,6 +32,12 @@ function fmtBytes(n: number | null | undefined): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / (1024 * 1024)).toFixed(2)} MB`
+}
+
+function fmtCacheRatio(cached: number, total: number): string {
+  if (!total || total <= 0) return '0/0 (0%)'
+  const pct = Math.round((cached / total) * 100)
+  return `${cached}/${total} (${pct}%)`
 }
 
 function timeLeftMeta(expiresAt: number | null | undefined): { text: string; cls: string } {
@@ -64,15 +74,17 @@ function StatusBadge({ status }: { status?: string | null }) {
 }
 
 export function AdminPage() {
+  const navigate = useNavigate()
   const [token, setToken] = useState<string>(() => localStorage.getItem(TOKEN_KEY) ?? '')
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [status, setStatus] = useState<any>(null)
   const [cacheStats, setCacheStats] = useState<any>(null)
   const [cacheSites, setCacheSites] = useState<any[]>([])
+  const [tasks, setTasks] = useState<{ running: any[]; pending: any[] }>({ running: [], pending: [] })
   const [openSite, setOpenSite] = useState<string | null>(null)
   const [ebooks, setEbooks] = useState<any[]>([])
-  const [tab, setTab] = useState<'ebooks' | 'cache'>('ebooks')
+  const [tab, setTab] = useState<'ebooks' | 'cache' | 'tasks'>('ebooks')
   const [filter, setFilter] = useState('')
   const [error, setError] = useState('')
 
@@ -90,18 +102,20 @@ export function AdminPage() {
   async function loadAll() {
     if (!token) return
     setError('')
-    const [s, cs, sites, eb] = await Promise.allSettled([
+    const [s, cs, sites, eb, ts] = await Promise.allSettled([
       adminStatus(token),
       adminCacheStats(token),
       adminCacheSites(token),
       adminEbooks(token),
+      adminTasks(token),
     ])
     if (s.status === 'fulfilled') setStatus(s.value)
     if (cs.status === 'fulfilled') setCacheStats(cs.value)
     if (sites.status === 'fulfilled') setCacheSites(sites.value.items)
     if (eb.status === 'fulfilled') setEbooks(eb.value.items)
+    if (ts.status === 'fulfilled') setTasks(ts.value)
 
-    const failures = [s, cs, sites, eb].filter((r) => r.status === 'rejected')
+    const failures = [s, cs, sites, eb, ts].filter((r) => r.status === 'rejected')
     if (failures.length > 0) {
       setError(`Admin load partial: ${failures.length} request(s) failed`)
     }
@@ -112,6 +126,15 @@ export function AdminPage() {
     void loadAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
+
+  useEffect(() => {
+    if (!token || tab !== 'tasks') return
+    const id = window.setInterval(() => {
+      void loadAll()
+    }, 5000)
+    return () => window.clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, tab])
 
   const filteredEbooks = useMemo(() => {
     const q = filter.trim().toLowerCase()
@@ -167,6 +190,7 @@ export function AdminPage() {
       <section className="space-y-2">
         <div className="flex gap-2">
           <button className={`px-3 py-1 rounded border ${tab === 'ebooks' ? 'bg-gray-100' : ''}`} onClick={() => setTab('ebooks')}>Stored ebooks</button>
+          <button className={`px-3 py-1 rounded border ${tab === 'tasks' ? 'bg-gray-100' : ''}`} onClick={() => setTab('tasks')}>Tasks running</button>
           <button className={`px-3 py-1 rounded border ${tab === 'cache' ? 'bg-gray-100' : ''}`} onClick={() => setTab('cache')}>Cached pages</button>
         </div>
       </section>
@@ -200,8 +224,14 @@ export function AdminPage() {
                       <button
                         className="text-xs text-blue-600 underline"
                         onClick={async () => {
-                          await adminRegenerateEbook(token, e.job_id, true)
-                          await loadAll()
+                          try {
+                            const res = await adminRegenerateEbook(token, e.job_id, true)
+                            addJobToHistory(res.job_id, e.ebook_title ?? 'Generating ebook…', res.source_url || e.source_url)
+                            await loadAll()
+                            navigate('/history')
+                          } catch (err: any) {
+                            setError(err?.message ?? 'Regenerate (cache) failed')
+                          }
                         }}
                       >
                         Regenerate (cache)
@@ -210,8 +240,14 @@ export function AdminPage() {
                         className="text-xs text-orange-600 underline"
                         onClick={async () => {
                           if (!window.confirm('Regenerate from scratch (clear site cache first)?')) return
-                          await adminRegenerateEbook(token, e.job_id, false)
-                          await loadAll()
+                          try {
+                            const res = await adminRegenerateEbook(token, e.job_id, false)
+                            addJobToHistory(res.job_id, e.ebook_title ?? 'Generating ebook…', res.source_url || e.source_url)
+                            await loadAll()
+                            navigate('/history')
+                          } catch (err: any) {
+                            setError(err?.message ?? 'Regenerate (from scratch) failed')
+                          }
                         }}
                       >
                         Regenerate (from scratch)
@@ -239,6 +275,41 @@ export function AdminPage() {
                   <button className="text-xs text-red-600" onClick={async () => { await adminDeleteEbook(token, e.job_id); await loadAll() }}>Delete ebook/work</button>
                 </div>
               ))}
+          </div>
+        </section>
+      ) : tab === 'tasks' ? (
+        <section className="space-y-3">
+          <h2 className="font-semibold">Tasks running</h2>
+          <div className="text-xs text-gray-500">Running: {tasks.running.length} · Pending: {tasks.pending.length}</div>
+          <div className="space-y-2 text-sm">
+            {tasks.running.map((t) => (
+              <div key={t.job_id} className="border rounded p-2">
+                <div className="font-medium">{t.job_id}</div>
+                <div className="text-xs text-gray-500">
+                  status=<StatusBadge status={t.status} /> · progress={t.progress}% · elapsed={Math.floor(t.elapsed_seconds / 60)}m
+                </div>
+                <div className="text-xs text-gray-500">
+                  cache posts={fmtCacheRatio(t.posts_cached ?? 0, (t.posts_crawled ?? 0) || (t.posts_found ?? 0))} ·
+                  images={fmtCacheRatio(t.images_cached ?? 0, (t.images_embedded ?? 0) || (t.images_found ?? 0))}
+                </div>
+                {t.source_url && <a className="text-xs text-blue-600 underline" href={t.source_url} target="_blank" rel="noreferrer">{t.source_url}</a>}
+                <div>
+                  <button className="text-xs text-red-600" onClick={async () => { await adminKillTask(token, t.job_id); await loadAll() }}>Kill task</button>
+                </div>
+              </div>
+            ))}
+            {tasks.pending.map((t) => (
+              <div key={t.job_id} className="border rounded p-2">
+                <div className="font-medium">{t.job_id}</div>
+                <div className="text-xs text-gray-500">
+                  queue={t.queue_position} · status=<StatusBadge status={t.status} /> · elapsed={Math.floor(t.elapsed_seconds / 60)}m
+                </div>
+                {t.source_url && <a className="text-xs text-blue-600 underline" href={t.source_url} target="_blank" rel="noreferrer">{t.source_url}</a>}
+                <div>
+                  <button className="text-xs text-red-600" onClick={async () => { await adminKillTask(token, t.job_id); await loadAll() }}>Kill task</button>
+                </div>
+              </div>
+            ))}
           </div>
         </section>
       ) : (

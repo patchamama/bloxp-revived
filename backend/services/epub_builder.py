@@ -12,6 +12,7 @@ from PIL import Image
 
 from services.crawler import Post
 from services.rendered_post_cache import get_rendered_post, set_rendered_post
+from services.image_cache import get_cached_image, set_cached_image
 
 # EPUB-compatible image formats
 _EPUB_MIME = {
@@ -137,15 +138,21 @@ def _embed_images(
             data, mime = image_cache[abs_url]
             cached_hit = True
         else:
-            result = _fetch_image(abs_url, referer=post_url)
-            if not result:
-                _decompose_with_wrapper(img_tag)
-                continue
-            raw, mime = result
-            if not mime.startswith("image/"):
-                _decompose_with_wrapper(img_tag)
-                continue
-            data, mime = _to_epub_image(raw, mime)
+            cached = get_cached_image(abs_url)
+            if cached is not None:
+                data, mime = cached
+                cached_hit = True
+            else:
+                result = _fetch_image(abs_url, referer=post_url)
+                if not result:
+                    _decompose_with_wrapper(img_tag)
+                    continue
+                raw, mime = result
+                if not mime.startswith("image/"):
+                    _decompose_with_wrapper(img_tag)
+                    continue
+                data, mime = _to_epub_image(raw, mime)
+                set_cached_image(abs_url, data, mime)
             if image_cache is not None:
                 image_cache[abs_url] = (data, mime)
 

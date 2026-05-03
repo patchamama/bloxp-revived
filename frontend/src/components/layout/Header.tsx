@@ -1,6 +1,32 @@
 import { NavLink } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
+
+const HISTORY_KEY = 'bloxp_job_history'
 
 export function Header() {
+  const location = useLocation()
+  const [historyCount, setHistoryCount] = useState(0)
+
+  useEffect(() => {
+    const update = () => {
+      try {
+        const raw = localStorage.getItem(HISTORY_KEY)
+        const arr = raw ? JSON.parse(raw) : []
+        setHistoryCount(Array.isArray(arr) ? arr.length : 0)
+      } catch {
+        setHistoryCount(0)
+      }
+    }
+    update()
+    window.addEventListener('storage', update)
+    window.addEventListener('focus', update)
+    return () => {
+      window.removeEventListener('storage', update)
+      window.removeEventListener('focus', update)
+    }
+  }, [location.pathname])
+
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `text-sm font-medium transition-colors hover:text-blue-600 dark:hover:text-blue-400 ${
       isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'
@@ -24,6 +50,9 @@ export function Header() {
           </NavLink>
           <NavLink to="/history" className={linkClass}>
             My ebooks
+            {historyCount > 0 && (
+              <sup className="ml-1 text-[10px] text-blue-600 dark:text-blue-400 align-super">{historyCount}</sup>
+            )}
           </NavLink>
           <NavLink to="/about" className={linkClass}>
             About

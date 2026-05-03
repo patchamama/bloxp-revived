@@ -138,3 +138,29 @@ export function adminForceStartJob(token: string, jobId: string): Promise<{ ok: 
     method: 'POST',
   })
 }
+
+export function adminTasks(
+  token: string,
+): Promise<{
+  running: Array<{
+    job_id: string
+    status: string
+    source_url?: string
+    created_at: number
+    elapsed_seconds: number
+    progress: number
+    posts_crawled: number
+    posts_cached: number
+    posts_found: number
+    images_embedded: number
+    images_cached: number
+    images_found: number
+  }>
+  pending: Array<{ job_id: string; status: string; source_url?: string; created_at: number; elapsed_seconds: number; queue_position: number }>
+}> {
+  return adminFetch('/api/admin/tasks', token)
+}
+
+export function adminKillTask(token: string, jobId: string): Promise<{ ok: boolean; job_id: string }> {
+  return adminFetch(`/api/admin/tasks/${jobId}/kill`, token, { method: 'POST' })
+}

@@ -17,6 +17,15 @@ from tasks.process_blog import (
 router = APIRouter()
 
 
+def _normalize_url(url: str) -> str:
+    u = (url or "").strip()
+    if not u:
+        return u
+    if "://" not in u:
+        return f"https://{u}"
+    return u
+
+
 class JobCreateRequest(BaseModel):
     type: Literal["basic", "advanced"]
     # basic
@@ -50,6 +59,7 @@ def create_job_endpoint(req: JobCreateRequest) -> dict:
         raise HTTPException(status_code=422, detail=f"post_range_end must be <= {max_limit}")
 
     if req.type == "basic":
+        req.feed_url = _normalize_url(req.feed_url)
         if not req.feed_url.strip():
             raise HTTPException(status_code=422, detail="feed_url is required for basic jobs")
         set_job_source_url(state.job_id, req.feed_url)
@@ -64,6 +74,8 @@ def create_job_endpoint(req: JobCreateRequest) -> dict:
         }
         submit_job(state.job_id, "basic", payload)
     else:
+        req.starting_url = _normalize_url(req.starting_url)
+        req.site_url = _normalize_url(req.site_url)
         for field, val in [
             ("starting_url", req.starting_url),
             ("site_url", req.site_url),

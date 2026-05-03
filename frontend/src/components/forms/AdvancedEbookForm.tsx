@@ -63,7 +63,7 @@ export function AdvancedEbookForm() {
         <Input
           id="startingUrl"
           label="URL of first post"
-          type="url"
+          type="text"
           placeholder="https://example.com/first-post"
           value={startingUrl}
           onChange={(e) => setField('startingUrl', e.target.value)}
@@ -83,7 +83,7 @@ export function AdvancedEbookForm() {
         <Input
           id="siteUrl"
           label="Blog URL"
-          type="url"
+          type="text"
           placeholder="https://example.com"
           value={siteUrl}
           onChange={(e) => setField('siteUrl', e.target.value)}

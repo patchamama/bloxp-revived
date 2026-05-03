@@ -33,7 +33,7 @@ export function BasicEbookForm() {
       <Input
         id="feedUrl"
         label="Blog Feed URL (RSS or Atom)"
-        type="url"
+        type="text"
         placeholder="https://example.com/feed"
         value={feedUrl}
         onChange={(e) => setField('feedUrl', e.target.value)}

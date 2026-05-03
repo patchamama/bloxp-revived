@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    app_version: str = "2.1.16"
+    app_version: str = "2.1.30"
     max_posts_limit: int = 9999
     page_cache_ttl_seconds: int = 86400
     processed_post_cache_ttl_seconds: int = 86400

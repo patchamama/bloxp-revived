@@ -69,14 +69,14 @@ export function WorkingPage() {
         {data.status === 'crawling' && data.posts_found > 0 && (
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {data.posts_crawled} / {data.posts_found} posts crawled
-            {data.posts_cached > 0 ? ` (${data.posts_cached} cached)` : ''}
+            {data.posts_cached > 0 ? ` (cached: ${data.posts_cached})` : ''}
           </p>
         )}
         {(data.status === 'downloading_images' || data.status === 'generating') &&
           data.images_found > 0 && (
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Embedding images: {data.images_embedded} / {data.images_found}
-            {data.images_cached > 0 ? ` (${data.images_cached} cached)` : ''}
+            {data.images_cached > 0 ? ` (cached: ${data.images_cached})` : ''}
           </p>
         )}
       </div>

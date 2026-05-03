@@ -76,8 +76,8 @@ function JobRow({
             (isImagePhase ? data.images_found > 0 : data.posts_found > 0) && (
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
                 {isImagePhase
-                  ? `(${data.images_embedded}/${data.images_found}${data.images_cached > 0 ? `, ${data.images_cached} cached` : ''})`
-                  : `(${data.posts_crawled}/${data.posts_found}${data.posts_cached > 0 ? `, ${data.posts_cached} cached` : ''})`}
+                  ? `(${data.images_embedded}/${data.images_found}${data.images_cached > 0 ? `, cached: ${data.images_cached}` : ''})`
+                  : `(${data.posts_crawled}/${data.posts_found}${data.posts_cached > 0 ? `, cached: ${data.posts_cached}` : ''})`}
               </p>
             )}
         </div>
