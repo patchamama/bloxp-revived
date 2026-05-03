@@ -9,6 +9,7 @@ import httpx
 from bs4 import BeautifulSoup
 from ebooklib import epub
 from PIL import Image
+from PIL import ImageOps
 
 from services.crawler import Post
 from services.rendered_post_cache import get_rendered_post, set_rendered_post
@@ -40,9 +41,10 @@ def _fetch_image(url: str, referer: str = "") -> tuple[bytes, str] | None:
         return None
 
 
-# Max dimensions suitable for e-readers (600px wide covers most devices)
-_EPUB_MAX_WIDTH = 800
-_EPUB_MAX_HEIGHT = 1200
+# Target dimensions suitable for common e-readers.
+# Keep around ~2/3 effective reading width while preserving quality.
+_EPUB_TARGET_MAX_WIDTH = 720
+_EPUB_TARGET_MAX_HEIGHT = 1440
 
 
 def _to_epub_image(data: bytes, mime: str) -> tuple[bytes, str]:
@@ -50,6 +52,7 @@ def _to_epub_image(data: bytes, mime: str) -> tuple[bytes, str]:
     needs_convert = mime in _CONVERT_TO_JPEG or mime not in _EPUB_MIME
     try:
         img = Image.open(io.BytesIO(data))
+        img = ImageOps.exif_transpose(img)
         if img.mode not in ("RGB", "RGBA"):
             img = img.convert("RGB")
         elif img.mode == "RGBA":
@@ -57,9 +60,9 @@ def _to_epub_image(data: bytes, mime: str) -> tuple[bytes, str]:
             bg.paste(img, mask=img.split()[3])
             img = bg
 
-        # Resize if larger than e-reader screen — preserve aspect ratio
-        if img.width > _EPUB_MAX_WIDTH or img.height > _EPUB_MAX_HEIGHT:
-            img.thumbnail((_EPUB_MAX_WIDTH, _EPUB_MAX_HEIGHT), Image.LANCZOS)
+        # Resize oversized images for e-readers — preserve aspect ratio
+        if img.width > _EPUB_TARGET_MAX_WIDTH or img.height > _EPUB_TARGET_MAX_HEIGHT:
+            img.thumbnail((_EPUB_TARGET_MAX_WIDTH, _EPUB_TARGET_MAX_HEIGHT), Image.LANCZOS)
 
         buf = io.BytesIO()
         if needs_convert or img.mode == "RGB":
@@ -181,16 +184,9 @@ def _embed_images(
         img_tag.attrs.pop("width", None)
         img_tag.attrs.pop("height", None)
 
-        # Size: content images (≥150px) get minimum 1/3 width; icons stay auto
-        try:
-            pil_img = Image.open(io.BytesIO(data))
-            is_content = pil_img.width >= 150 or pil_img.height >= 150
-        except Exception:
-            is_content = True
-        if is_content:
-            img_tag["style"] = "min-width:33%;width:auto;max-width:66%;height:auto;display:block;margin:0.5em auto"
-        else:
-            img_tag["style"] = "width:auto;height:auto;max-width:66%;display:block;margin:0.5em auto"
+        # Keep natural aspect ratio with a conservative visual cap (~2/3 width).
+        # No fixed width/height to avoid deformation.
+        img_tag["style"] = "max-width:66%;width:auto;height:auto;display:block;margin:0.5em auto"
 
     # Remove any empty wrappers left behind by failed image fetches
     root = soup.body if soup.body else soup
@@ -1010,9 +1006,9 @@ figure, p.img-block {
 }
 figure img, p.img-block img, img {
     display: block;
-    max-width: 66%;
-    width: auto;
-    height: auto;
+    max-width: 66% !important;
+    width: auto !important;
+    height: auto !important;
     margin: 0.5em auto;
 }
 hr { margin: 1.5em 0; border: none; border-top: 1px solid #ccc; }
