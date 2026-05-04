@@ -12,7 +12,10 @@ const STATUS_MESSAGES: Record<JobStatus, string> = {
   queued: 'Your job is in the queue…',
   parsing: 'Parsing feed…',
   crawling: 'Crawling blog posts…',
-  downloading_images: 'Generating ebook…',
+  downloading_images: 'Embedding images…',
+  compacting_epub: 'Compacting content for EPUB…',
+  converting_mobi: 'Converting EPUB to MOBI…',
+  generating_pdf: 'Generating PDF…',
   generating: 'Generating ebook…',
   done: 'Your ebook is ready!',
   error: 'An error occurred.',
@@ -80,7 +83,7 @@ export function WorkingPage() {
             {data.posts_cached > 0 ? ` (cached: ${data.posts_cached})` : ''}
           </p>
         )}
-        {(data.status === 'downloading_images' || data.status === 'generating') &&
+        {(data.status === 'downloading_images') &&
           data.images_found > 0 && (
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Embedding images: {data.images_embedded} / {data.images_found}

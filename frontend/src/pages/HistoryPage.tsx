@@ -46,6 +46,9 @@ function JobRow({
       parsing: '0/3.',
       crawling: '1/3.',
       downloading_images: '2/3.',
+      compacting_epub: '3/3.',
+      converting_mobi: '3/3.',
+      generating_pdf: '3/3.',
       generating: '3/3.',
     }
     return phaseMap[displayStatus]
@@ -183,10 +186,16 @@ function StatusBadge({
     parsing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
     crawling: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
     downloading_images: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+    compacting_epub: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+    converting_mobi: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
+    generating_pdf: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-400',
     generating: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
   }
   const labels: Record<string, string> = {
     downloading_images: 'downloading images',
+    compacting_epub: 'compacting epub',
+    converting_mobi: 'converting mobi',
+    generating_pdf: 'generating pdf',
   }
 
   return (

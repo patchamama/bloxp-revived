@@ -85,6 +85,9 @@ def _active_count() -> int:
             JobStatus.parsing,
             JobStatus.crawling,
             JobStatus.downloading_images,
+            JobStatus.compacting_epub,
+            JobStatus.converting_mobi,
+            JobStatus.generating_pdf,
             JobStatus.generating,
         ):
             active += 1
@@ -183,6 +186,9 @@ def list_runtime_tasks() -> dict[str, list[dict[str, Any]]]:
         JobStatus.parsing,
         JobStatus.crawling,
         JobStatus.downloading_images,
+        JobStatus.compacting_epub,
+        JobStatus.converting_mobi,
+        JobStatus.generating_pdf,
         JobStatus.generating,
     }
     for key in _redis.scan_iter("job:*"):
@@ -563,9 +569,9 @@ def _generate_ebooks(
                     total_imgs += 1
         state.images_found = total_imgs
         if total_imgs == 0:
-            state.status = JobStatus.generating
+            state.status = JobStatus.compacting_epub
     else:
-        state.status = JobStatus.generating
+        state.status = JobStatus.compacting_epub
 
     _save_state(state)
 
@@ -581,13 +587,18 @@ def _generate_ebooks(
             state.progress = 75 + int((embedded / state.images_found) * 10)
         _save_state(state)
 
+    state.status = JobStatus.compacting_epub
+    if state.progress < 78:
+        state.progress = 78
+    _save_state(state)
+
     ep = epub_path(state.job_id)
     _, image_cache, processed_contents = build_epub(
         posts, title, description, ep, add_toc, links_to_footnotes, include_images,
         on_image=on_image if include_images else None,
     )
     state.epub_path = str(ep)
-    state.status = JobStatus.generating
+    state.status = JobStatus.converting_mobi
     state.progress = 85
     _save_state(state)
 
@@ -597,6 +608,7 @@ def _generate_ebooks(
         state.mobi_path = str(mp)
     else:
         _log.warning("MOBI conversion unavailable for job %s: %s", state.job_id, err)
+    state.status = JobStatus.generating_pdf
     state.progress = 92
     _save_state(state)
 

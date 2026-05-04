@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     admin_users_json: str = '{"admin":"pbkdf2_sha256$200000$2c4c14d9bfd648aa92da45063abe8e7d$fa642fc7877bbde4fea1fd6b6bf1bce10f954cad1e698f0314181d20d07e913a"}'
     redis_url: str = "redis://localhost:6379/0"
     generated_dir: str = "./generated"
-    calibre_ebook_convert_path: str = "/opt/calibre/ebook-convert"
+    calibre_ebook_convert_path: str = "/usr/bin/ebook-convert"
+    calibre_path: str = "/usr/bin/calibre"
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
