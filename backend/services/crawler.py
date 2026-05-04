@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 import httpx
 from services.link_finder import find_next_post_url
-from services.content_extractor import extract_content
+from services.content_extractor import extract_content, is_bad_title
 from services.page_cache import get_cached_html, set_cached_html
 from services.processed_post_cache import get_processed_post, set_processed_post
 from models.ebook_options import CustomSelector
@@ -25,12 +25,14 @@ class Post:
 
 
 async def crawl_from_feed(
-    post_urls: list[str],
+    post_items: list[tuple[str, str]],
     max_posts: int = 250,
     on_progress: Optional[Callable[[int, int, int], None]] = None,
     include_images: bool = True,
 ) -> list[Post]:
-    urls = post_urls[:max_posts]
+    items = post_items[:max_posts]
+    urls = [u for u, _ in items]
+    fallback_title_by_url = {u: t for u, t in items}
     total = len(urls)
     posts: list[Post] = []
 
@@ -50,6 +52,16 @@ async def crawl_from_feed(
                         title = cached_post.get("title", "Untitled")
                         date = cached_post.get("date")
                         content = cached_post.get("content", "<p>No content</p>")
+                        if is_bad_title(title):
+                            html = get_cached_html(url)
+                            if html is None:
+                                from_cache = False
+                                r = await client.get(url)
+                                r.raise_for_status()
+                                html = r.text
+                                set_cached_html(url, html)
+                            title, date, content = extract_content(html, url, include_images=include_images)
+                            set_processed_post(url, include_images=include_images, title=title, date=date, content=content)
                     else:
                         html = get_cached_html(url)
                         if html is None:
@@ -66,6 +78,9 @@ async def crawl_from_feed(
                             if from_cache:
                                 cached += 1
                             on_progress(crawled, total, cached)
+                    fallback_title = (fallback_title_by_url.get(url) or "").strip()
+                    if is_bad_title(title) and fallback_title:
+                        title = fallback_title
                     return Post(url=url, title=title, content=content, date=date)
                 except Exception:
                     return None
@@ -103,6 +118,9 @@ async def crawl_from_url(
                     title = cached_post.get("title", "Untitled")
                     date = cached_post.get("date")
                     content = cached_post.get("content", "<p>No content</p>")
+                    if is_bad_title(title):
+                        title, date, content = extract_content(html, current_url, include_images=include_images)
+                        set_processed_post(current_url, include_images=include_images, title=title, date=date, content=content)
                 else:
                     title, date, content = extract_content(html, current_url, include_images=include_images)
                     set_processed_post(current_url, include_images=include_images, title=title, date=date, content=content)

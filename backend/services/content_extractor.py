@@ -20,6 +20,19 @@ _LAZY_PLACEHOLDERS = {"", "//:0", "about:blank", "#", "data:,"}
 # Attributes that hold the real image URL in lazy-loaded content
 _LAZY_SRC_ATTRS = ("data-src", "data-original-src", "data-lazy-src", "data-orig", "data-url")
 
+# Comment/reply headings that should never be considered article titles.
+_BAD_TITLE_RE = re.compile(
+    r"(?:area de discusi[oó]n|cancelar respuesta|reply|comentarios?|leave a reply|comment)",
+    re.IGNORECASE,
+)
+
+
+def is_bad_title(title: str) -> bool:
+    t = (title or "").strip()
+    if len(t) < 3:
+        return True
+    return bool(_BAD_TITLE_RE.search(t))
+
 # CSS selectors tried in order to locate the main article body
 _ARTICLE_SELECTORS = [
     # Schema.org
@@ -184,12 +197,63 @@ def _extract_with_readability(html: str) -> str | None:
 
 
 def _extract_title(html: str) -> str:
-    metadata = trafilatura.extract_metadata(html)
-    if metadata and metadata.title:
-        return metadata.title
     soup = BeautifulSoup(html, "lxml")
-    tag = soup.find("title")
-    return tag.get_text(strip=True) if tag else "Untitled"
+    candidates: list[str] = []
+
+    # 1) Metadata (good for many sites), but discard obvious comment headings.
+    try:
+        metadata = trafilatura.extract_metadata(html)
+        if metadata and metadata.title:
+            candidates.append(metadata.title)
+    except Exception:
+        pass
+
+    # 2) Social meta tags.
+    for attrs in (
+        {"property": "og:title"},
+        {"name": "twitter:title"},
+    ):
+        tag = soup.find("meta", attrs=attrs)
+        if tag:
+            content = (tag.get("content") or "").strip()
+            if content:
+                candidates.append(content)
+
+    # 3) Common post title selectors (WordPress/blog themes).
+    for selector in (
+        "article h1",
+        "article h2",
+        ".post h1",
+        ".post h2",
+        ".entry-title",
+        ".post-title",
+        "h1",
+        "h2",
+    ):
+        tag = soup.select_one(selector)
+        if tag:
+            txt = tag.get_text(" ", strip=True)
+            if txt:
+                candidates.append(txt)
+
+    # 4) Document title, split common separators ("Site » Post title").
+    title_tag = soup.find("title")
+    if title_tag:
+        raw = title_tag.get_text(" ", strip=True)
+        if raw:
+            candidates.append(raw)
+            for sep in ("»", "|", " - ", " — ", " :: "):
+                if sep in raw:
+                    candidates.extend(part.strip() for part in raw.split(sep) if part.strip())
+
+    # Pick first plausible candidate.
+    for cand in candidates:
+        cand = re.sub(r"\s+", " ", cand).strip(" \t\r\n-–—|»")
+        if is_bad_title(cand):
+            continue
+        return cand
+
+    return "Untitled"
 
 
 def _extract_date(html: str) -> str | None:

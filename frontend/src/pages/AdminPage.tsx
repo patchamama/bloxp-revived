@@ -19,6 +19,31 @@ import { addJobToHistory } from '@/hooks/useJobHistory'
 
 const TOKEN_KEY = 'bloxp_admin_token'
 
+function normalizeErrorMessage(err: unknown): string {
+  const fallback = 'No se pudo iniciar sesión. Revisa tus credenciales e inténtalo de nuevo.'
+  const raw = (err as any)?.message
+  if (!raw || typeof raw !== 'string') return fallback
+
+  if (raw.includes('Invalid credentials')) {
+    return 'Usuario o contraseña incorrectos.'
+  }
+
+  try {
+    const parsed = JSON.parse(raw)
+    const detail = parsed?.detail
+    if (typeof detail === 'string') {
+      if (detail.toLowerCase().includes('invalid credentials')) {
+        return 'Usuario o contraseña incorrectos.'
+      }
+      return detail
+    }
+  } catch {
+    // no-op: raw is not JSON
+  }
+
+  return raw
+}
+
 function fmtDate(v: number | string | null | undefined): string {
   if (v == null) return '—'
   const n = typeof v === 'number' ? v : Number(v)
@@ -95,7 +120,7 @@ export function AdminPage() {
       localStorage.setItem(TOKEN_KEY, res.token)
       setToken(res.token)
     } catch (e: any) {
-      setError(e?.message ?? 'Login failed')
+      setError(normalizeErrorMessage(e))
     }
   }
 
@@ -158,7 +183,7 @@ export function AdminPage() {
         <input className="w-full border rounded px-3 py-2" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" />
         <input className="w-full border rounded px-3 py-2" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" />
         <button className="px-4 py-2 rounded bg-blue-600 text-white" onClick={login}>Login</button>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>}
       </main>
     )
   }

@@ -9,7 +9,8 @@ from config import settings
 
 _redis = redis_lib.from_url(settings.redis_url, decode_responses=True)
 _TTL = settings.processed_post_cache_ttl_seconds
-_PIPELINE_VERSION = "v1"
+# Bump when extraction logic changes so stale cached titles/content are invalidated.
+_PIPELINE_VERSION = "v2"
 
 
 def _normalize_url(url: str) -> str:

@@ -16,6 +16,7 @@ from models.job import JobState, JobStatus
 from models.ebook_options import BasicJobRequest, AdvancedJobRequest, CustomSelector
 from services.feed_parser import parse_feed
 from services.crawler import crawl_from_feed, crawl_from_url, Post
+from services.content_extractor import is_bad_title
 from services.epub_builder import build_epub
 from services.mobi_converter import convert_epub_to_mobi
 from services.pdf_builder import build_pdf
@@ -369,6 +370,21 @@ def _slugify(title: str) -> str:
     return slug or "ebook"
 
 
+def _derive_title_from_content(content: str) -> str | None:
+    try:
+        soup = BeautifulSoup(content or "", "lxml")
+        for selector in ("h1 a", "h2 a", "h1", "h2"):
+            tag = soup.select_one(selector)
+            if not tag:
+                continue
+            txt = tag.get_text(" ", strip=True)
+            if txt and not is_bad_title(txt):
+                return txt
+    except Exception:
+        return None
+    return None
+
+
 def _persist_job_metadata(state: JobState, posts_count: int) -> None:
     try:
         out_dir = epub_path(state.job_id).parent
@@ -416,8 +432,8 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
             _save_state(state)
             return
 
-        post_urls = [p.url for p in feed.posts][range_start - 1:range_end]
-        state.posts_found = len(post_urls)
+        feed_post_items = [(p.url, p.title) for p in feed.posts][range_start - 1:range_end]
+        state.posts_found = len(feed_post_items)
         state.status = JobStatus.crawling
         state.progress = 10
         _save_state(state)
@@ -430,12 +446,12 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
             _save_state(state)
 
         posts = asyncio.run(
-            crawl_from_feed(
-                post_urls,
-                max_posts=len(post_urls),
-                on_progress=on_progress,
-                include_images=req.include_images,
-            )
+                crawl_from_feed(
+                    feed_post_items,
+                    max_posts=len(feed_post_items),
+                    on_progress=on_progress,
+                    include_images=req.include_images,
+                )
         )
 
         _generate_ebooks(state, posts, feed.title, feed.description, req.add_toc, req.links_to_footnotes, req.include_images)
@@ -521,6 +537,13 @@ def _generate_ebooks(
         state.error_message = "No posts could be fetched."
         _save_state(state)
         return
+
+    # Final title guardrail: fix any bad/corrupted post title before rendering EPUB/PDF.
+    for post in posts:
+        if is_bad_title(post.title):
+            recovered = _derive_title_from_content(post.content or "")
+            if recovered:
+                post.title = recovered
 
     # Authoritative count of posts that made it into the ebook
     state.posts_crawled = len(posts)

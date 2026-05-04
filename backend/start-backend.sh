@@ -27,8 +27,8 @@ if [ ! -x "$VENV_DIR/bin/python" ]; then
   echo "[ERROR] Missing virtualenv at $VENV_DIR"
   exit 1
 fi
-if [ ! -x "$VENV_DIR/bin/celery" ]; then
-  echo "[ERROR] Missing celery at $VENV_DIR/bin/celery"
+if ! "$VENV_DIR/bin/python" -m celery --version >/dev/null 2>&1; then
+  echo "[ERROR] celery is not available in $VENV_DIR"
   exit 1
 fi
 
@@ -76,18 +76,18 @@ fi
 mkdir -p "$LOG_DIR"
 cd "$SCRIPT_DIR"
 
-if ! pgrep -f "$VENV_DIR/bin/celery -A tasks.celery_app:celery_app worker" >/dev/null 2>&1; then
+if ! pgrep -f "$VENV_DIR/bin/python -m celery -A tasks.celery_app:celery_app worker" >/dev/null 2>&1; then
   echo "[INFO] Celery worker not running, starting it..."
-  nohup "$VENV_DIR/bin/celery" -A tasks.celery_app:celery_app worker \
+  nohup "$VENV_DIR/bin/python" -m celery -A tasks.celery_app:celery_app worker \
     --loglevel=info \
     --concurrency=2 \
     > "$WORKER_LOG" 2>&1 &
 fi
-if ! pgrep -f "$VENV_DIR/bin/celery -A tasks.celery_app beat" >/dev/null 2>&1; then
+if ! pgrep -f "$VENV_DIR/bin/python -m celery -A tasks.celery_app beat" >/dev/null 2>&1; then
   echo "[INFO] Celery beat not running, starting it..."
-  nohup "$VENV_DIR/bin/celery" -A tasks.celery_app beat \
+  nohup "$VENV_DIR/bin/python" -m celery -A tasks.celery_app beat \
     --loglevel=info \
     > "$BEAT_LOG" 2>&1 &
 fi
 
-exec "$VENV_DIR/bin/uvicorn" main:app --host 0.0.0.0 --port "$PORT" --reload
+exec "$VENV_DIR/bin/python" -m uvicorn main:app --host 0.0.0.0 --port "$PORT" --reload

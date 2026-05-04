@@ -7,7 +7,8 @@ VENV_DIR="$BACKEND_DIR/.venv"
 LOG_DIR="$SCRIPT_DIR/logs"
 PIDS_FILE="$SCRIPT_DIR/.pids"
 PORT="${PORT:-8001}"
-BACKEND_URL="http://127.0.0.1:${PORT}/api/health"
+BACKEND_URL_127="http://127.0.0.1:${PORT}/api/health"
+BACKEND_URL_LOCALHOST="http://localhost:${PORT}/api/health"
 NO_DOCKER_CHECK=false
 
 for arg in "$@"; do
@@ -28,12 +29,12 @@ if [ ! -x "$VENV_DIR/bin/python" ]; then
   echo "Run ./deploy.sh first."
   exit 1
 fi
-if [ ! -x "$VENV_DIR/bin/uvicorn" ]; then
-  echo "[ERROR] Missing uvicorn at $VENV_DIR/bin/uvicorn"
+if ! "$VENV_DIR/bin/python" -m uvicorn --version >/dev/null 2>&1; then
+  echo "[ERROR] uvicorn is not available in $VENV_DIR"
   exit 1
 fi
-if [ ! -x "$VENV_DIR/bin/celery" ]; then
-  echo "[ERROR] Missing celery at $VENV_DIR/bin/celery"
+if ! "$VENV_DIR/bin/python" -m celery --version >/dev/null 2>&1; then
+  echo "[ERROR] celery is not available in $VENV_DIR"
   exit 1
 fi
 
@@ -78,9 +79,9 @@ else
 fi
 
 # Stop previous local processes (if any)
-pkill -f "$VENV_DIR/bin/uvicorn main:app --host 0.0.0.0 --port $PORT" 2>/dev/null || true
-pkill -f "$VENV_DIR/bin/celery -A tasks.celery_app:celery_app worker" 2>/dev/null || true
-pkill -f "$VENV_DIR/bin/celery -A tasks.celery_app beat" 2>/dev/null || true
+pkill -f "$VENV_DIR/bin/python -m uvicorn main:app --host 0.0.0.0 --port $PORT" 2>/dev/null || true
+pkill -f "$VENV_DIR/bin/python -m celery -A tasks.celery_app:celery_app worker" 2>/dev/null || true
+pkill -f "$VENV_DIR/bin/python -m celery -A tasks.celery_app beat" 2>/dev/null || true
 sleep 1
 
 if command -v ss >/dev/null 2>&1; then
@@ -93,19 +94,19 @@ fi
 
 cd "$BACKEND_DIR"
 
-nohup "$VENV_DIR/bin/uvicorn" main:app \
+nohup "$VENV_DIR/bin/python" -m uvicorn main:app \
   --host 0.0.0.0 \
   --port "$PORT" \
   > "$LOG_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
 
-nohup "$VENV_DIR/bin/celery" -A tasks.celery_app:celery_app worker \
+nohup "$VENV_DIR/bin/python" -m celery -A tasks.celery_app:celery_app worker \
   --loglevel=info \
   --concurrency=2 \
   > "$LOG_DIR/worker.log" 2>&1 &
 WORKER_PID=$!
 
-nohup "$VENV_DIR/bin/celery" -A tasks.celery_app beat \
+nohup "$VENV_DIR/bin/python" -m celery -A tasks.celery_app beat \
   --loglevel=info \
   > "$LOG_DIR/beat.log" 2>&1 &
 BEAT_PID=$!
@@ -132,14 +133,15 @@ done
 if command -v curl >/dev/null 2>&1; then
   HEALTH_OK=false
   for _ in {1..20}; do
-    if curl -fsS "$BACKEND_URL" >/dev/null 2>&1; then
+    if curl --noproxy '*' -fsS "$BACKEND_URL_127" >/dev/null 2>&1 || \
+       curl --noproxy '*' -fsS "$BACKEND_URL_LOCALHOST" >/dev/null 2>&1; then
       HEALTH_OK=true
       break
     fi
     sleep 0.5
   done
   if [ "$HEALTH_OK" = false ]; then
-    echo "[ERROR] Backend did not become healthy at $BACKEND_URL"
+    echo "[ERROR] Backend did not become healthy at $BACKEND_URL_127 nor $BACKEND_URL_LOCALHOST"
     tail -n 80 "$LOG_DIR/backend.log" 2>/dev/null || true
     exit 1
   fi
