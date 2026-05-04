@@ -77,8 +77,11 @@ def _clean_for_pdf(content: str, post_url: str, image_cache: dict) -> str:
             data, mime = entry
             b64 = base64.b64encode(data).decode()
             img["src"] = f"data:{mime};base64,{b64}"
-            img.attrs.pop("width", None)
-            img.attrs.pop("height", None)
+            img_attrs = img.attrs if isinstance(img.attrs, dict) else {}
+            if img_attrs is not img.attrs:
+                img.attrs = img_attrs
+            img_attrs.pop("width", None)
+            img_attrs.pop("height", None)
             img["style"] = "max-width:66%;width:auto;height:auto;display:block;margin:0 auto;text-align:center"
         else:
             img.decompose()
@@ -97,19 +100,26 @@ def _clean_for_pdf(content: str, post_url: str, image_cache: dict) -> str:
 
     # Strip inline style overrides from CMS
     for tag in root.find_all(True):
-        tag.attrs.pop("style", None)
-        tag.attrs.pop("size", None)
-        tag.attrs.pop("face", None)
-        tag.attrs.pop("color", None)
-        tag.attrs.pop("align", None)
-        tag.attrs.pop("bgcolor", None)
-        tag.attrs.pop("dir", None)
-        tag.attrs.pop("lang", None)
+        attrs = tag.attrs if isinstance(tag.attrs, dict) else {}
+        if attrs is not tag.attrs:
+            tag.attrs = attrs
+        attrs.pop("style", None)
+        attrs.pop("size", None)
+        attrs.pop("face", None)
+        attrs.pop("color", None)
+        attrs.pop("align", None)
+        attrs.pop("bgcolor", None)
+        attrs.pop("dir", None)
+        attrs.pop("lang", None)
 
     # Unwrap bare <span>/<font> with no remaining attributes
     for tag in list(root.find_all(["span", "font"])):
         if tag.parent is not None and not tag.attrs:
             tag.unwrap()
+
+    for tag in list(root.find_all(lambda t: getattr(t, "name", None) is None)):
+        if getattr(tag, "parent", None) is not None:
+            tag.decompose()
 
     return root.decode_contents() if body else str(root)
 

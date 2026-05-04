@@ -179,10 +179,13 @@ def _embed_images(
             on_image(img_counter[0], cached_hit)
 
         img_tag["src"] = img_path
-        img_tag.attrs.pop("srcset", None)
-        img_tag.attrs.pop("loading", None)
-        img_tag.attrs.pop("width", None)
-        img_tag.attrs.pop("height", None)
+        img_attrs = img_tag.attrs if isinstance(img_tag.attrs, dict) else {}
+        if img_attrs is not img_tag.attrs:
+            img_tag.attrs = img_attrs
+        img_attrs.pop("srcset", None)
+        img_attrs.pop("loading", None)
+        img_attrs.pop("width", None)
+        img_attrs.pop("height", None)
 
         # Keep natural aspect ratio with a conservative visual cap (~2/3 width).
         # No fixed width/height to avoid deformation.
@@ -407,19 +410,22 @@ _OUR_CLASSES = frozenset({
 def _strip_inline_styles(root) -> None:
     """Remove inline style/font attrs, CMS class names, and bare wrapper tags."""
     for tag in root.find_all(True):
-        tag.attrs.pop("style", None)
-        tag.attrs.pop("size", None)
-        tag.attrs.pop("face", None)
-        tag.attrs.pop("color", None)
-        tag.attrs.pop("align", None)
-        tag.attrs.pop("bgcolor", None)
-        tag.attrs.pop("dir", None)
-        tag.attrs.pop("lang", None)
+        attrs = tag.attrs if isinstance(tag.attrs, dict) else {}
+        if attrs is not tag.attrs:
+            tag.attrs = attrs
+        attrs.pop("style", None)
+        attrs.pop("size", None)
+        attrs.pop("face", None)
+        attrs.pop("color", None)
+        attrs.pop("align", None)
+        attrs.pop("bgcolor", None)
+        attrs.pop("dir", None)
+        attrs.pop("lang", None)
         if tag.name == "img":
-            tag.attrs.pop("width", None)
-            tag.attrs.pop("height", None)
+            attrs.pop("width", None)
+            attrs.pop("height", None)
         # Strip CMS class names; keep only classes our CSS actually uses
-        if "class" in tag.attrs:
+        if "class" in attrs:
             classes = tag.get("class") or []
             if isinstance(classes, str):
                 classes = classes.split()
@@ -427,7 +433,7 @@ def _strip_inline_styles(root) -> None:
             if kept:
                 tag["class"] = kept
             else:
-                del tag.attrs["class"]
+                del attrs["class"]
 
     # Unwrap <span> and <font> tags left with no attributes — they were purely
     # decorative/CMS wrappers (color, size, font-family) now stripped.
@@ -443,6 +449,13 @@ def _collapse_double_spaces(root) -> None:
     for node in root.find_all(string=True):
         if isinstance(node, NavigableString) and "  " in str(node):
             node.replace_with(_DOUBLE_SPACE_RE.sub(" ", str(node)))
+
+
+def _remove_nameless_tags(root) -> None:
+    """Drop malformed tags that BeautifulSoup cannot serialize (name=None)."""
+    for tag in list(root.find_all(lambda t: getattr(t, "name", None) is None)):
+        if getattr(tag, "parent", None) is not None:
+            tag.decompose()
 
 
 _IMG_WRAPPER_STYLE = "text-align:center;margin:1em auto"
@@ -974,6 +987,7 @@ def _clean_content(html: str) -> str:
     _fix_reference_spacing(root)
     _collapse_double_spaces(root)
     _mark_quoted_paragraphs(root)
+    _remove_nameless_tags(root)
 
     return root.decode_contents() if body else str(root)
 
@@ -1198,4 +1212,5 @@ def _convert_links_to_footnotes(html: str, post_url: str = "") -> str:
         for child in list((fn_body or fn_soup).children):
             root.append(child)
 
+    _remove_nameless_tags(root)
     return root.decode_contents() if body else str(root)
