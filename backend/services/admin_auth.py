@@ -3,16 +3,24 @@ import hashlib
 import hmac
 import json
 import time
+from pathlib import Path
 from typing import Dict
 
+from dotenv import dotenv_values
 from fastapi import Header, HTTPException
 
 from config import settings
 
+# .env lives one level above this file (backend/.env)
+_ENV_FILE = Path(__file__).parent.parent / ".env"
+
 
 def _users() -> Dict[str, str]:
+    # Re-read .env on every call so new users take effect without restarting.
+    env = dotenv_values(_ENV_FILE) if _ENV_FILE.exists() else {}
+    raw_json = env.get("ADMIN_USERS_JSON") or settings.admin_users_json
     try:
-        raw = json.loads(settings.admin_users_json)
+        raw = json.loads(raw_json)
         return raw if isinstance(raw, dict) else {}
     except Exception:
         return {}

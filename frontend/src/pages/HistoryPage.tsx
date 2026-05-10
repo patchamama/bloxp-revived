@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { adminForceStartJob, cancelJob, getJobStatus } from '@/api/client'
 import { getJobHistory, removeJobFromHistory, type HistoryEntry } from '@/hooks/useJobHistory'
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '')
 import { Button } from '@/components/ui/Button'
 
 function JobRow({
@@ -97,7 +99,7 @@ function JobRow({
           <div className="flex gap-2 flex-wrap">
             {data.has_epub && (
               <a
-                href={`/api/jobs/${entry.job_id}/download/epub`}
+                href={`${BASE}/api/jobs/${entry.job_id}/download/epub`}
                 download
                 className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium"
               >
@@ -106,7 +108,7 @@ function JobRow({
             )}
             {data.has_mobi && (
               <a
-                href={`/api/jobs/${entry.job_id}/download/mobi`}
+                href={`${BASE}/api/jobs/${entry.job_id}/download/mobi`}
                 download
                 className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium"
               >
@@ -115,7 +117,7 @@ function JobRow({
             )}
             {data.has_pdf && (
               <a
-                href={`/api/jobs/${entry.job_id}/download/pdf`}
+                href={`${BASE}/api/jobs/${entry.job_id}/download/pdf`}
                 download
                 className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium"
               >

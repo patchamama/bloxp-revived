@@ -15,19 +15,19 @@ function _draw(status: JobStatus, progress: number): string {
   const cy = SIZE / 2
   const r = SIZE / 2 - 5
 
-  // Dark background disc
+  // Light background disc
   ctx.beginPath()
   ctx.arc(cx, cy, SIZE / 2, 0, Math.PI * 2)
-  ctx.fillStyle = '#0f0f1a'
+  ctx.fillStyle = '#f5f3ff'
   ctx.fill()
 
   if (status === 'done') {
     ctx.beginPath()
     ctx.arc(cx, cy, r, 0, Math.PI * 2)
-    ctx.strokeStyle = '#22c55e'
+    ctx.strokeStyle = '#15803d'
     ctx.lineWidth = 6
     ctx.stroke()
-    ctx.strokeStyle = '#22c55e'
+    ctx.strokeStyle = '#15803d'
     ctx.lineWidth = 5
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
@@ -42,10 +42,10 @@ function _draw(status: JobStatus, progress: number): string {
   if (status === 'error') {
     ctx.beginPath()
     ctx.arc(cx, cy, r, 0, Math.PI * 2)
-    ctx.strokeStyle = '#ef4444'
+    ctx.strokeStyle = '#b91c1c'
     ctx.lineWidth = 6
     ctx.stroke()
-    ctx.strokeStyle = '#ef4444'
+    ctx.strokeStyle = '#b91c1c'
     ctx.lineWidth = 5
     ctx.lineCap = 'round'
     ctx.beginPath()
@@ -61,11 +61,11 @@ function _draw(status: JobStatus, progress: number): string {
     ctx.setLineDash([5, 5])
     ctx.beginPath()
     ctx.arc(cx, cy, r, 0, Math.PI * 2)
-    ctx.strokeStyle = '#6b7280'
+    ctx.strokeStyle = '#9ca3af'
     ctx.lineWidth = 6
     ctx.stroke()
     ctx.setLineDash([])
-    ctx.fillStyle = '#9ca3af'
+    ctx.fillStyle = '#374151'
     ctx.font = 'bold 14px sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
@@ -76,27 +76,27 @@ function _draw(status: JobStatus, progress: number): string {
   // Active progress states
   const pct = Math.round(Math.max(0, Math.min(100, progress)))
 
-  // Background ring
+  // Background ring (light gray)
   ctx.beginPath()
   ctx.arc(cx, cy, r, 0, Math.PI * 2)
-  ctx.strokeStyle = '#2d2d44'
+  ctx.strokeStyle = '#ddd6fe'
   ctx.lineWidth = 7
   ctx.stroke()
 
-  // Progress arc (starts at top)
+  // Progress arc — dark purple for contrast on light bg
   if (pct > 0) {
     const start = -Math.PI / 2
     const end = start + Math.PI * 2 * (pct / 100)
     ctx.beginPath()
     ctx.arc(cx, cy, r, start, end)
-    ctx.strokeStyle = '#863bff'
+    ctx.strokeStyle = '#5b21b6'
     ctx.lineWidth = 7
     ctx.lineCap = 'round'
     ctx.stroke()
   }
 
-  // Percentage number
-  ctx.fillStyle = '#ffffff'
+  // Percentage number — dark text
+  ctx.fillStyle = '#1e1b4b'
   const fontSize = pct >= 100 ? 15 : pct >= 10 ? 17 : 19
   ctx.font = `bold ${fontSize}px sans-serif`
   ctx.textAlign = 'center'

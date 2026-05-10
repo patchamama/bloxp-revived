@@ -18,6 +18,7 @@ import {
 import { addJobToHistory } from '@/hooks/useJobHistory'
 
 const TOKEN_KEY = 'bloxp_admin_token'
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '')
 
 function normalizeErrorMessage(err: unknown): string {
   const fallback = 'No se pudo iniciar sesión. Revisa tus credenciales e inténtalo de nuevo.'
@@ -299,7 +300,7 @@ export function AdminPage() {
                       <a
                         key={f.path}
                         className="text-xs text-blue-600 underline"
-                        href={`/api/jobs/${e.job_id}/download/${f.name.endsWith('.epub') ? 'epub' : f.name.endsWith('.mobi') ? 'mobi' : 'pdf'}`}
+                        href={`${BASE}/api/jobs/${e.job_id}/download/${f.name.endsWith('.epub') ? 'epub' : f.name.endsWith('.mobi') ? 'mobi' : 'pdf'}`}
                       >
                         {f.name} ({f.size_bytes}b)
                       </a>

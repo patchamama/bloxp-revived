@@ -23,6 +23,7 @@ const STATUS_MESSAGES: Record<JobStatus, string> = {
 }
 
 const APP = 'Bloxp'
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '')
 
 export function WorkingPage() {
   const { jobId } = useParams<{ jobId: string }>()
@@ -123,17 +124,17 @@ export function WorkingPage() {
           </p>
           <div className="flex flex-wrap gap-3">
             {data.has_epub && (
-              <a href={`/api/jobs/${jobId}/download/epub`} download>
+              <a href={`${BASE}/api/jobs/${jobId}/download/epub`} download>
                 <Button variant="primary">Download EPUB</Button>
               </a>
             )}
             {data.has_mobi && (
-              <a href={`/api/jobs/${jobId}/download/mobi`} download>
+              <a href={`${BASE}/api/jobs/${jobId}/download/mobi`} download>
                 <Button variant="secondary">Download MOBI</Button>
               </a>
             )}
             {data.has_pdf && (
-              <a href={`/api/jobs/${jobId}/download/pdf`} download>
+              <a href={`${BASE}/api/jobs/${jobId}/download/pdf`} download>
                 <Button variant="secondary">Download PDF</Button>
               </a>
             )}
