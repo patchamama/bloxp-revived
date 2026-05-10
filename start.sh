@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+
+# docker compose build backend worker && docker compose up -d backend worker beat
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

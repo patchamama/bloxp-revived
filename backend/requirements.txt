@@ -14,3 +14,4 @@ ebooklib==0.18.0
 weasyprint==63.1
 python-multipart==0.0.20
 Pillow==11.2.1
+playwright==1.54.0
