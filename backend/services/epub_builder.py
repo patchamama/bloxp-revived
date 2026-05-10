@@ -3,7 +3,7 @@ import mimetypes
 import re
 from pathlib import Path
 from typing import Callable
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, urlunparse, urlencode, parse_qsl
 
 import httpx
 from bs4 import BeautifulSoup
@@ -27,6 +27,32 @@ _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".avif", 
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; Bloxp/2.0; +https://bloxp.app)"}
 
+# Wix CDN: strip /v1/fill/{params}/{filename} → get original full-resolution file
+_WIX_FILL_RE = re.compile(
+    r'(https://static\.wixstatic\.com/media/[^/?#]+)'
+    r'/v1/[^?#]*',
+    re.IGNORECASE,
+)
+# Blogger/Blogspot: /s320/, /s400-c/, /w640-h480/ → /s0/ (no size limit)
+_BLOGGER_SIZE_RE = re.compile(r'/(?:s\d+|w\d+(?:-h\d+)?)(?:-[a-z]+)*(?=/[^/])')
+
+
+def _maximize_image_url(url: str) -> str:
+    """Strip CDN size constraints to request the original full-resolution image."""
+    if 'wixstatic.com' in url:
+        m = _WIX_FILL_RE.match(url)
+        if m:
+            return m.group(1)
+    elif 'bp.blogspot.com' in url or 'blogger.googleusercontent.com' in url:
+        url = _BLOGGER_SIZE_RE.sub('/s0', url)
+    elif 'wp.com' in url:
+        # WordPress.com Jetpack CDN: i0.wp.com/{domain}/path?resize=W,H&...
+        parsed = urlparse(url)
+        qs = [(k, v) for k, v in parse_qsl(parsed.query)
+              if k not in ('resize', 'w', 'h', 'fit', 'crop', 'quality', 'strip')]
+        url = urlunparse(parsed._replace(query=urlencode(qs)))
+    return url
+
 
 def _fetch_image(url: str, referer: str = "") -> tuple[bytes, str] | None:
     headers = {**HEADERS}
@@ -45,6 +71,10 @@ def _fetch_image(url: str, referer: str = "") -> tuple[bytes, str] | None:
 # 1800×3600 covers high-DPI readers (Kindle 300dpi ≈1072px, Kobo ≈1264px) with headroom.
 _EPUB_TARGET_MAX_WIDTH = 1800
 _EPUB_TARGET_MAX_HEIGHT = 3600
+
+# Images smaller than this after fetch are decorative noise (icons, separators, tracking pixels).
+# Skip them so they're not stretched across 66% of the page.
+_MIN_CONTENT_DIMENSION = 80  # pixels on the shorter side
 
 
 def _to_epub_image(data: bytes, mime: str) -> tuple[bytes, str]:
@@ -137,17 +167,22 @@ def _embed_images(
 
         img_parent = img_tag.parent  # capture before possible decompose
 
+        # Use the maximized URL as the canonical key for cache + fetch so that
+        # CDN size-variant URLs (Wix /v1/fill/w_49,blur_2/…, Blogger /s400/)
+        # all resolve to the same full-resolution cached entry.
+        fetch_url = _maximize_image_url(abs_url)
+
         cached_hit = False
-        if image_cache is not None and abs_url in image_cache:
-            data, mime = image_cache[abs_url]
+        if image_cache is not None and fetch_url in image_cache:
+            data, mime = image_cache[fetch_url]
             cached_hit = True
         else:
-            cached = get_cached_image(abs_url)
+            cached = get_cached_image(fetch_url)
             if cached is not None:
                 data, mime = cached
                 cached_hit = True
             else:
-                result = _fetch_image(abs_url, referer=post_url)
+                result = _fetch_image(fetch_url, referer=post_url)
                 if not result:
                     _decompose_with_wrapper(img_tag)
                     continue
@@ -156,9 +191,19 @@ def _embed_images(
                     _decompose_with_wrapper(img_tag)
                     continue
                 data, mime = _to_epub_image(raw, mime)
-                set_cached_image(abs_url, data, mime)
+                set_cached_image(fetch_url, data, mime)
             if image_cache is not None:
-                image_cache[abs_url] = (data, mime)
+                image_cache[fetch_url] = (data, mime)
+
+        # Skip decorative/noise images that are tiny even after URL maximization.
+        # Check dimensions without re-opening if we can derive from cached JPEG/PNG header.
+        try:
+            _check = Image.open(io.BytesIO(data))
+            if min(_check.width, _check.height) < _MIN_CONTENT_DIMENSION:
+                _decompose_with_wrapper(img_tag)
+                continue
+        except Exception:
+            pass
 
         ext = _ext_for_mime(mime)
         idx = img_counter[0]
@@ -166,9 +211,11 @@ def _embed_images(
         img_name = f"image_{post_number}_{idx:04d}.{ext}"
         img_path = f"images/{img_name}"
 
-        # Also index by epub-relative path so pdf_builder can look up by src
+        # Also index by epub-relative path and original URL so pdf_builder can look up by src
         if image_cache is not None:
             image_cache[img_path] = (data, mime)
+            if abs_url != fetch_url:
+                image_cache[abs_url] = (data, mime)
 
         epub_img = epub.EpubImage()
         epub_img.file_name = img_path

@@ -25,7 +25,7 @@ def _normalize_url(url: str) -> str:
     return urlunparse((scheme, netloc, path, "", p.query, ""))
 
 
-_CACHE_VERSION = "v2"  # bump when image processing params change
+_CACHE_VERSION = "v3"  # bump when image processing params change
 
 
 def _key(url: str) -> str:
