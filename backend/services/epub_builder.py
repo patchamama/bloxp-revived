@@ -235,7 +235,7 @@ def _embed_images(
         img_attrs.pop("width", None)
         img_attrs.pop("height", None)
 
-        img_tag["style"] = "width:66%;max-width:100%;height:auto;display:block;margin:0.5em auto"
+        img_tag["style"] = "max-width:66%;width:auto;height:auto;display:block;margin:0.5em auto"
 
     # Remove any empty wrappers left behind by failed image fetches
     root = soup.body if soup.body else soup
@@ -1066,8 +1066,8 @@ figure, p.img-block {
 }
 figure img, p.img-block img, img {
     display: block;
-    width: 66% !important;
-    max-width: 100% !important;
+    max-width: 66% !important;
+    width: auto !important;
     height: auto !important;
     margin: 0.5em auto;
 }

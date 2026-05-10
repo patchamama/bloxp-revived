@@ -19,8 +19,8 @@ blockquote { font-size: 1em; margin: 1em 2em; font-style: italic; }
 a { color: #1a0dab; }
 figure, p.img-block { display: block !important; text-align: center !important;
                       margin: 1.5em auto !important; }
-figure img, p.img-block img, img { display: block !important; min-width: 66% !important;
-                                   max-width: 100% !important; width: auto !important;
+figure img, p.img-block img, img { display: block !important; max-width: 66% !important;
+                                   width: auto !important;
                                    height: auto !important; margin: 0.5em auto !important; }
 hr { margin: 1.5em 0; }
 ul, ol { margin: 0.5em 0 0.5em 1.5em; padding: 0; }
@@ -82,7 +82,7 @@ def _clean_for_pdf(content: str, post_url: str, image_cache: dict) -> str:
                 img.attrs = img_attrs
             img_attrs.pop("width", None)
             img_attrs.pop("height", None)
-            img["style"] = "min-width:66%;max-width:100%;width:auto;height:auto;display:block;margin:0 auto"
+            img["style"] = "max-width:66%;width:auto;height:auto;display:block;margin:0 auto"
         else:
             img.decompose()
 
