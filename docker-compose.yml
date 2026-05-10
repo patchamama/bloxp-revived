@@ -14,7 +14,7 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8000:8000"
+      - "8282:8282"
     depends_on:
       redis:
         condition: service_healthy
@@ -28,7 +28,7 @@ services:
       SMTP_PORT: "587"
       SMTP_USER: ""
       SMTP_PASS: ""
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8282 --reload
     networks:
       - bloxp
 

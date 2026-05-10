@@ -14,4 +14,4 @@ npm run preview    # preview production build locally
 npx tsc --noEmit   # type-check without emitting
 ```
 
-The Vite dev server proxies `/api/*` to `http://localhost:8000`.
+The Vite dev server proxies `/api/*` to `http://localhost:8282`.

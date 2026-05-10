@@ -3,7 +3,7 @@ import type { JobStatusResponse } from '@/types/job'
 import type { SystemStatusResponse } from '@/types/system'
 import type { HealthResponse } from '@/types/health'
 
-const BASE = import.meta.env.VITE_API_URL ?? ''
+const BASE = import.meta.env.VITE_API_URL ?? import.meta.env.BASE_URL.replace(/\/$/, '')
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, init)

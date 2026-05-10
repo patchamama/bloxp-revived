@@ -208,7 +208,7 @@ deploy.bat
 
 ---
 
-Abrí **http://localhost:8000** (o **http://localhost:8001** en WSL2 si el puerto 8000 está reservado por Hyper-V).
+Abrí **http://localhost:8282** (o **http://localhost:8282** en WSL2 si el puerto 8282 está reservado por Hyper-V).
 
 Para detener todos los servicios (Linux / macOS):
 ```bash
@@ -270,7 +270,7 @@ cd frontend
 npm install && npm run dev
 ```
 
-El servidor de desarrollo de Vite proxea las peticiones `/api/*` a `http://localhost:8000`.
+El servidor de desarrollo de Vite proxea las peticiones `/api/*` a `http://localhost:8282`.
 
 ---
 

@@ -73,6 +73,9 @@ prompt_default() {
 # ── Flags ─────────────────────────────────────────────────────────────────────
 BUILD_FRONTEND=true
 SETUP_VENV=true
+# Base path for sub-path deployments (e.g. /bloxp/ when served behind a reverse proxy).
+# Override: BASE_PATH=/bloxp/ ./deploy.sh
+APP_BASE_PATH="${BASE_PATH:-/bloxp/}"
 
 for arg in "$@"; do
   case $arg in
@@ -100,20 +103,52 @@ echo -e "╚══════════════════════�
 # ── Detect OS ─────────────────────────────────────────────────────────────────
 OS="$(uname -s)"
 
+# ── Auto-detect nvm Node >= 18 (handles sudo dropping NVM_DIR from PATH) ──────
+_node_major() { node --version 2>/dev/null | sed 's/v//' | cut -d. -f1; }
+
+_inject_nvm_node() {
+  # Already have a good node?
+  [ "$(_node_major)" -ge 18 ] 2>/dev/null && return 0
+
+  # Find nvm root — sudo drops NVM_DIR, so derive from the invoking user's home
+  local nvm_root="${NVM_DIR:-}"
+  if [ -z "$nvm_root" ] || [ ! -d "$nvm_root/versions/node" ]; then
+    local try_user="${SUDO_USER:-$USER}"
+    local try_home
+    try_home=$(getent passwd "$try_user" 2>/dev/null | cut -d: -f6) || try_home="$HOME"
+    nvm_root="$try_home/.nvm"
+  fi
+
+  [ -d "$nvm_root/versions/node" ] || return 1
+
+  # Pick the highest installed node that is >= 18
+  local best
+  best=$(ls "$nvm_root/versions/node" \
+         | sed 's/v//' \
+         | awk -F. '$1+0>=18' \
+         | sort -t. -k1,1n -k2,2n -k3,3n \
+         | tail -1)
+  [ -n "$best" ] || return 1
+
+  export PATH="$nvm_root/versions/node/v${best}/bin:$PATH"
+  info "Using nvm Node v${best} (system node too old)"
+}
+
+_inject_nvm_node || true
+
 # ── 1. Prerequisites check ────────────────────────────────────────────────────
 step "Checking prerequisites"
 
-if [ "$OS" = "Linux" ]; then
-  command -v node  >/dev/null 2>&1 || { install_help "Node.js"; error "Node.js not found."; }
-  command -v npm   >/dev/null 2>&1 || { install_help "Node.js"; error "npm not found."; }
-  command -v python3 >/dev/null 2>&1 || { install_help "Python 3.10+"; error "Python 3 not found."; }
-else
-  command -v node  >/dev/null 2>&1 || { install_help "Node.js"; error "Node.js not found."; }
-  command -v npm   >/dev/null 2>&1 || { install_help "Node.js"; error "npm not found."; }
-  command -v python3 >/dev/null 2>&1 || { install_help "Python 3.10+"; error "Python 3 not found."; }
-fi
+command -v node    >/dev/null 2>&1 || { install_help "Node.js"; error "Node.js not found. Install via nvm: nvm install 20"; }
+command -v npm     >/dev/null 2>&1 || { install_help "Node.js"; error "npm not found."; }
+command -v python3 >/dev/null 2>&1 || { install_help "Python 3.10+"; error "Python 3 not found."; }
 
 NODE_VER=$(node -v | sed 's/v//')
+NODE_MAJOR=$(echo "$NODE_VER" | cut -d. -f1)
+if [ "${NODE_MAJOR:-0}" -lt 18 ]; then
+  error "Node.js 18+ required (found: v${NODE_VER}). Run: nvm install 20 && nvm use 20"
+fi
+
 PY_VER=$(python3 --version | awk '{print $2}')
 info "Node.js $NODE_VER | Python $PY_VER"
 python3 - <<'PY' || error "Python 3.10+ required."
@@ -171,8 +206,8 @@ if [ "$BUILD_FRONTEND" = true ]; then
   info "Installing npm dependencies..."
   npm install --silent
 
-  info "Running production build..."
-  npm run build
+  info "Running production build (base path: ${APP_BASE_PATH})..."
+  VITE_BASE_PATH="$APP_BASE_PATH" npm run build
 
   success "Frontend built → $FRONTEND_DIR/dist"
 else
@@ -346,11 +381,11 @@ cd "$BACKEND_DIR"
 # FastAPI
 nohup "$VENV_DIR/bin/uvicorn" main:app \
   --host 0.0.0.0 \
-  --port 8000 \
+  --port 8282 \
   --workers 2 \
   > "$LOG_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
-success "Backend started (PID $BACKEND_PID) → http://localhost:8000"
+success "Backend started (PID $BACKEND_PID) → http://localhost:8282"
 
 # Celery worker
 nohup "$VENV_DIR/bin/celery" -A tasks.celery_app worker \
@@ -378,7 +413,7 @@ EOF
 step "Waiting for backend to be ready"
 MAX_WAIT=15
 for i in $(seq 1 $MAX_WAIT); do
-  if curl -sf http://localhost:8000/api/health >/dev/null 2>&1; then
+  if curl -sf http://localhost:8282/api/health >/dev/null 2>&1; then
     success "Backend is healthy"
     break
   fi
@@ -393,8 +428,8 @@ echo -e "\n${GREEN}${BOLD}╔═════════════════
 echo -e "║   Bloxp Revived is running!                  ║"
 echo -e "╚══════════════════════════════════════════════╝${NC}"
 echo -e ""
-echo -e "  ${BOLD}App${NC}      → ${BLUE}http://localhost:8000${NC}"
-echo -e "  ${BOLD}API docs${NC} → ${BLUE}http://localhost:8000/docs${NC}"
+echo -e "  ${BOLD}App${NC}      → ${BLUE}http://localhost:8282${NC}"
+echo -e "  ${BOLD}API docs${NC} → ${BLUE}http://localhost:8282/docs${NC}"
 echo -e ""
 echo -e "  Logs:"
 echo -e "    Backend : tail -f logs/backend.log"

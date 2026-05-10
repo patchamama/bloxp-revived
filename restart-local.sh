@@ -1,2 +1,2 @@
 ./stop-local.sh
-PORT=8000 bash ./start-local.sh
+PORT=8282 bash ./start-local.sh

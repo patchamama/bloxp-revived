@@ -16,7 +16,7 @@ const queryClient = new QueryClient()
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || undefined}>
         <div className="min-h-screen flex flex-col bg-white dark:bg-gray-900">
           <Header />
           <div className="flex-1">
