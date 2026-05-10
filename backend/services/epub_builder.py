@@ -41,14 +41,14 @@ def _fetch_image(url: str, referer: str = "") -> tuple[bytes, str] | None:
         return None
 
 
-# Target dimensions suitable for common e-readers.
-# Keep around ~2/3 effective reading width while preserving quality.
-_EPUB_TARGET_MAX_WIDTH = 720
-_EPUB_TARGET_MAX_HEIGHT = 1440
+# Max pixel dimensions before downscaling.
+# 1800×3600 covers high-DPI readers (Kindle 300dpi ≈1072px, Kobo ≈1264px) with headroom.
+_EPUB_TARGET_MAX_WIDTH = 1800
+_EPUB_TARGET_MAX_HEIGHT = 3600
 
 
 def _to_epub_image(data: bytes, mime: str) -> tuple[bytes, str]:
-    """Convert to JPEG if needed, resize to e-reader dimensions, optimize quality."""
+    """Convert format if needed, downscale only if huge, preserve PNG losslessly."""
     needs_convert = mime in _CONVERT_TO_JPEG or mime not in _EPUB_MIME
     try:
         img = Image.open(io.BytesIO(data))
@@ -60,13 +60,14 @@ def _to_epub_image(data: bytes, mime: str) -> tuple[bytes, str]:
             bg.paste(img, mask=img.split()[3])
             img = bg
 
-        # Resize oversized images for e-readers — preserve aspect ratio
         if img.width > _EPUB_TARGET_MAX_WIDTH or img.height > _EPUB_TARGET_MAX_HEIGHT:
             img.thumbnail((_EPUB_TARGET_MAX_WIDTH, _EPUB_TARGET_MAX_HEIGHT), Image.LANCZOS)
 
         buf = io.BytesIO()
-        if needs_convert or img.mode == "RGB":
-            img.save(buf, format="JPEG", quality=82, optimize=True)
+        # Use the original mime to pick output format — img.mode is always RGB
+        # at this point so we cannot use it to distinguish JPEG from PNG.
+        if needs_convert or mime == "image/jpeg":
+            img.save(buf, format="JPEG", quality=90, optimize=True)
             return buf.getvalue(), "image/jpeg"
         else:
             img.save(buf, format="PNG", optimize=True)
@@ -187,9 +188,7 @@ def _embed_images(
         img_attrs.pop("width", None)
         img_attrs.pop("height", None)
 
-        # Keep natural aspect ratio with a conservative visual cap (~2/3 width).
-        # No fixed width/height to avoid deformation.
-        img_tag["style"] = "max-width:66%;width:auto;height:auto;display:block;margin:0.5em auto"
+        img_tag["style"] = "width:66%;max-width:100%;height:auto;display:block;margin:0.5em auto"
 
     # Remove any empty wrappers left behind by failed image fetches
     root = soup.body if soup.body else soup
@@ -1020,8 +1019,8 @@ figure, p.img-block {
 }
 figure img, p.img-block img, img {
     display: block;
-    max-width: 66% !important;
-    width: auto !important;
+    width: 66% !important;
+    max-width: 100% !important;
     height: auto !important;
     margin: 0.5em auto;
 }

@@ -121,6 +121,8 @@ def get_job_status(job_id: str) -> JobStatusResponse:
         posts_found=state.posts_found,
         posts_crawled=state.posts_crawled,
         posts_cached=state.posts_cached,
+        posts_skipped=state.posts_skipped,
+        skipped_urls=state.skipped_urls,
         error_message=state.error_message,
         has_epub=bool(state.epub_path),
         has_mobi=bool(state.mobi_path),

@@ -1,6 +1,8 @@
 import asyncio
 from dataclasses import dataclass
 from typing import Callable, Optional
+from urllib.parse import urlparse
+from collections import defaultdict
 import httpx
 from services.link_finder import find_next_post_url
 from services.content_extractor import extract_content, is_bad_title
@@ -13,7 +15,8 @@ HEADERS = {
 }
 
 TIMEOUT = httpx.Timeout(30.0)
-MAX_CONCURRENT = 5
+MAX_CONCURRENT = 3
+_PER_HOST_DELAY = 0.8  # seconds between requests to the same host
 
 
 @dataclass
@@ -24,12 +27,31 @@ class Post:
     date: str | None = None
 
 
+async def _fetch_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    host_locks: dict,
+) -> str:
+    host = urlparse(url).netloc
+    for attempt in range(4):
+        async with host_locks[host]:
+            r = await client.get(url)
+            if r.status_code == 429:
+                retry_after = int(r.headers.get("Retry-After", 2 ** (attempt + 1)))
+                await asyncio.sleep(min(retry_after, 30))
+                continue
+            r.raise_for_status()
+            await asyncio.sleep(_PER_HOST_DELAY)
+            return r.text
+    raise httpx.HTTPStatusError("429 after retries", request=r.request, response=r)
+
+
 async def crawl_from_feed(
     post_items: list[tuple[str, str]],
     max_posts: int = 250,
     on_progress: Optional[Callable[[int, int, int], None]] = None,
     include_images: bool = True,
-) -> list[Post]:
+) -> tuple[list[Post], list[str]]:
     items = post_items[:max_posts]
     urls = [u for u, _ in items]
     fallback_title_by_url = {u: t for u, t in items}
@@ -39,6 +61,7 @@ async def crawl_from_feed(
     async with httpx.AsyncClient(headers=HEADERS, timeout=TIMEOUT, follow_redirects=True) as client:
         sem = asyncio.Semaphore(MAX_CONCURRENT)
         lock = asyncio.Lock()
+        host_locks: dict = defaultdict(asyncio.Lock)
         crawled = 0
         cached = 0
 
@@ -56,9 +79,7 @@ async def crawl_from_feed(
                             html = get_cached_html(url)
                             if html is None:
                                 from_cache = False
-                                r = await client.get(url)
-                                r.raise_for_status()
-                                html = r.text
+                                html = await _fetch_with_retry(client, url, host_locks)
                                 set_cached_html(url, html)
                             title, date, content = extract_content(html, url, include_images=include_images)
                             set_processed_post(url, include_images=include_images, title=title, date=date, content=content)
@@ -66,9 +87,7 @@ async def crawl_from_feed(
                         html = get_cached_html(url)
                         if html is None:
                             from_cache = False
-                            r = await client.get(url)
-                            r.raise_for_status()
-                            html = r.text
+                            html = await _fetch_with_retry(client, url, host_locks)
                             set_cached_html(url, html)
                         title, date, content = extract_content(html, url, include_images=include_images)
                         set_processed_post(url, include_images=include_images, title=title, date=date, content=content)
@@ -87,7 +106,9 @@ async def crawl_from_feed(
 
         results = await asyncio.gather(*[fetch_one(u, i) for i, u in enumerate(urls)])
 
-    return [p for p in results if p is not None]
+    posts = [p for p in results if p is not None]
+    failed = [urls[i] for i, p in enumerate(results) if p is None]
+    return posts, failed
 
 
 async def crawl_from_url(

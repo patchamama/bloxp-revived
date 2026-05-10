@@ -25,9 +25,12 @@ def _normalize_url(url: str) -> str:
     return urlunparse((scheme, netloc, path, "", p.query, ""))
 
 
+_CACHE_VERSION = "v2"  # bump when image processing params change
+
+
 def _key(url: str) -> str:
     h = hashlib.sha256(_normalize_url(url).encode("utf-8")).hexdigest()
-    return f"image_cache:{h}"
+    return f"image_cache:{_CACHE_VERSION}:{h}"
 
 
 def get_cached_image(url: str) -> Optional[tuple[bytes, str]]:

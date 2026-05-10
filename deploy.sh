@@ -14,7 +14,7 @@
 #
 # Requirements:
 #   - Node.js >= 18 and npm
-#   - Python >= 3.11
+#   - Python >= 3.10
 #   - Redis running on localhost:6379  (brew install redis && brew services start redis)
 #   - Calibre (optional, for Mobi output)  (brew install --cask calibre)
 # =============================================================================
@@ -41,14 +41,14 @@ install_help() {
   if [ "$OS" = "Linux" ]; then
     case "$what" in
       "Node.js") echo "  Ubuntu: sudo apt-get update && sudo apt-get install -y nodejs npm" ;;
-      "Python 3.11+") echo "  Ubuntu: sudo apt-get update && sudo apt-get install -y python3 python3-venv python3-pip" ;;
+      "Python 3.10+") echo "  Ubuntu: sudo apt-get update && sudo apt-get install -y python3 python3-venv python3-pip" ;;
       "Redis") echo "  Ubuntu: sudo apt-get update && sudo apt-get install -y redis-server && sudo systemctl start redis-server" ;;
       *) echo "  Ubuntu: use apt-get to install ${what}" ;;
     esac
   elif [ "$OS" = "Darwin" ]; then
     case "$what" in
       "Node.js") echo "  macOS: brew install node" ;;
-      "Python 3.11+") echo "  macOS: brew install python" ;;
+      "Python 3.10+") echo "  macOS: brew install python" ;;
       "Redis") echo "  macOS: brew install redis && brew services start redis" ;;
       *) echo "  macOS: brew install ${what}" ;;
     esac
@@ -106,19 +106,19 @@ step "Checking prerequisites"
 if [ "$OS" = "Linux" ]; then
   command -v node  >/dev/null 2>&1 || { install_help "Node.js"; error "Node.js not found."; }
   command -v npm   >/dev/null 2>&1 || { install_help "Node.js"; error "npm not found."; }
-  command -v python3 >/dev/null 2>&1 || { install_help "Python 3.11+"; error "Python 3 not found."; }
+  command -v python3 >/dev/null 2>&1 || { install_help "Python 3.10+"; error "Python 3 not found."; }
 else
   command -v node  >/dev/null 2>&1 || { install_help "Node.js"; error "Node.js not found."; }
   command -v npm   >/dev/null 2>&1 || { install_help "Node.js"; error "npm not found."; }
-  command -v python3 >/dev/null 2>&1 || { install_help "Python 3.11+"; error "Python 3 not found."; }
+  command -v python3 >/dev/null 2>&1 || { install_help "Python 3.10+"; error "Python 3 not found."; }
 fi
 
 NODE_VER=$(node -v | sed 's/v//')
 PY_VER=$(python3 --version | awk '{print $2}')
 info "Node.js $NODE_VER | Python $PY_VER"
-python3 - <<'PY' || error "Python 3.11+ required."
+python3 - <<'PY' || error "Python 3.10+ required."
 import sys
-raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
 PY
 
 # ── Check / install / start Redis ─────────────────────────────────────────────
@@ -210,6 +210,15 @@ pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
 success "Python dependencies installed"
 
+info "Installing Playwright browser (Chromium)..."
+"$VENV_DIR/bin/python" -m playwright install chromium 2>&1 | grep -v "^$" || warn "Playwright browser install failed — Wix browser discovery will be disabled"
+if [ "$OS" = "Linux" ]; then
+  info "Installing Playwright system dependencies..."
+  "$VENV_DIR/bin/playwright" install-deps chromium >/dev/null 2>&1 \
+    || warn "Playwright system deps install failed — run: sudo playwright install-deps chromium"
+fi
+success "Playwright ready"
+
 command -v celery >/dev/null 2>&1 || error "Celery not available in venv after pip install (check backend/requirements.txt)."
 python - <<'PY' || error "Redis Python client missing in venv."
 import redis
@@ -267,20 +276,21 @@ if [ -t 0 ]; then
   if [[ "${CFG_ADM:-N}" =~ ^[Yy]$ ]]; then
     read -r -p "How many admin users? [1]: " NADM || true
     NADM="${NADM:-1}"
-    ADMIN_USERS_VAL="$("$VENV_DIR/bin/python" - <<PY
-import json, os, hashlib, secrets
-n = int("${NADM}")
+    ADMIN_USERS_VAL="$("$VENV_DIR/bin/python" -c "import json, hashlib, secrets, sys
+n = int(${NADM})
 users = {}
 for i in range(n):
-    u = input(f"Admin username #{i+1}: ").strip()
-    p = input(f"Password for {u}: ").strip()
+    sys.stderr.write(f'Admin username #{i+1}: ')
+    sys.stderr.flush()
+    u = input().strip()
+    sys.stderr.write(f'Password for {u}: ')
+    sys.stderr.flush()
+    p = input().strip()
     salt = secrets.token_hex(16)
     it = 200000
-    h = hashlib.pbkdf2_hmac("sha256", p.encode(), salt.encode(), it).hex()
-    users[u] = f"pbkdf2_sha256\${it}\${salt}\${h}"
-print(json.dumps(users, ensure_ascii=False))
-PY
-)"
+    h = hashlib.pbkdf2_hmac('sha256', p.encode(), salt.encode(), it).hex()
+    users[u] = f'pbkdf2_sha256\${it}\${salt}\${h}'
+print(json.dumps(users, ensure_ascii=False))")"
   else
     ADMIN_USERS_VAL="${ADMIN_USERS_DEFAULT:-{\"admin\":\"pbkdf2_sha256\$200000\$2c4c14d9bfd648aa92da45063abe8e7d\$fa642fc7877bbde4fea1fd6b6bf1bce10f954cad1e698f0314181d20d07e913a\"}}"
   fi
@@ -391,5 +401,5 @@ echo -e "    Backend : tail -f logs/backend.log"
 echo -e "    Worker  : tail -f logs/worker.log"
 echo -e "    Beat    : tail -f logs/beat.log"
 echo -e ""
-echo -e "  To stop all services: ${BOLD}./stop.sh${NC}"
+echo -e "  To stop all services: ${BOLD}./stop-local.sh${NC}"
 echo -e ""

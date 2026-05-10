@@ -212,7 +212,7 @@ Abrí **http://localhost:8000** (o **http://localhost:8001** en WSL2 si el puert
 
 Para detener todos los servicios (Linux / macOS):
 ```bash
-./stop.sh
+./stop-local.sh
 ```
 
 #### Flags de deploy.sh / deploy.bat
@@ -246,7 +246,7 @@ bloxp-revived/
 ├── generated/                 # Ebooks de salida (auto-creado, gitignored)
 ├── logs/                      # Logs de servicios (auto-creado, gitignored)
 ├── deploy.sh                  # Script de deploy local en producción
-├── stop.sh                    # Detener todos los servicios locales
+├── stop-local.sh                    # Detener todos los servicios locales
 ├── docker-compose.yml         # Stack completo vía Docker
 └── TODO.md                    # Roadmap y problemas conocidos
 ```
@@ -319,10 +319,10 @@ Todos los endpoints admin requieren `Authorization: Bearer <token>` obtenido en 
 ### Agregar usuarios admin desde CLI
 
 ```bash
-chmod +x add_admin_user.sh
-./add_admin_user.sh <username> <password> [env_file]
+chmod +x add-admin-user.sh
+./add-admin-user.sh <username> <password> [env_file]
 # ejemplo
-./add_admin_user.sh admin rayuela backend/.env
+./add-admin-user.sh admin rayuela backend/.env
 ```
 
 Esto actualiza `ADMIN_USERS_JSON` en el env con credenciales hasheadas en PBKDF2.

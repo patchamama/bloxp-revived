@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useJobStatus } from '@/hooks/useJobStatus'
+import { useDynamicFavicon } from '@/hooks/useDynamicFavicon'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Spinner } from '@/components/ui/Spinner'
 import { ErrorPanel } from '@/components/ui/ErrorPanel'
@@ -21,15 +22,36 @@ const STATUS_MESSAGES: Record<JobStatus, string> = {
   error: 'An error occurred.',
 }
 
+const APP = 'Bloxp'
+
 export function WorkingPage() {
   const { jobId } = useParams<{ jobId: string }>()
   const { data, isLoading, isError } = useJobStatus(jobId ?? null)
+
+  useDynamicFavicon(data?.status ?? null, data?.progress ?? 0)
 
   useEffect(() => {
     if (data?.status === 'done' && jobId && data.ebook_title) {
       addJobToHistory(jobId, data.ebook_title)
     }
   }, [data?.status, data?.ebook_title, jobId])
+
+  useEffect(() => {
+    if (!data) return
+    const { status, progress, queue_position } = data
+    let title: string
+    if (status === 'queued') {
+      title = queue_position ? `[#${queue_position}] ${APP}` : `[cola] ${APP}`
+    } else if (status === 'done') {
+      title = `[✓] ${APP}`
+    } else if (status === 'error') {
+      title = `[✗] ${APP}`
+    } else {
+      title = `[${Math.round(progress)}%] ${APP}`
+    }
+    document.title = title
+    return () => { document.title = APP }
+  }, [data?.status, data?.progress, data?.queue_position])
 
   if (isLoading || !data) {
     return (
@@ -119,6 +141,22 @@ export function WorkingPage() {
           <p className="text-xs text-gray-400 dark:text-gray-500 pt-1">
             Files are available for 24 hours.
           </p>
+          {data.posts_skipped > 0 && (
+            <details className="mt-4 rounded-lg border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 p-3">
+              <summary className="cursor-pointer text-sm font-medium text-yellow-800 dark:text-yellow-300">
+                ⚠ {data.posts_skipped} post{data.posts_skipped > 1 ? 's' : ''} could not be downloaded
+              </summary>
+              <ul className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+                {data.skipped_urls.map((url) => (
+                  <li key={url} className="text-xs text-yellow-700 dark:text-yellow-400 truncate">
+                    <a href={url} target="_blank" rel="noreferrer" className="hover:underline">
+                      {url}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       )}
 

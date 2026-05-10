@@ -8,6 +8,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - bloxp
 
   backend:
     build: ./backend
@@ -27,6 +29,8 @@ services:
       SMTP_USER: ""
       SMTP_PASS: ""
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - bloxp
 
   worker:
     build: ./backend
@@ -40,6 +44,8 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       GENERATED_DIR: /generated
+    networks:
+      - bloxp
 
   beat:
     build: ./backend
@@ -52,6 +58,8 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       GENERATED_DIR: /generated
+    networks:
+      - bloxp
 
   frontend:
     build: ./frontend
@@ -62,3 +70,9 @@ services:
       - /app/node_modules
     environment:
       VITE_API_URL: ""
+    networks:
+      - bloxp
+
+networks:
+  bloxp:
+    driver: bridge

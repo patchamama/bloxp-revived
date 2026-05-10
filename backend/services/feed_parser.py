@@ -26,9 +26,13 @@ class FeedInfo:
 
 def _parse_url(url: str) -> Optional[tuple[feedparser.FeedParserDict, list[FeedPost]]]:
     cached = get_cached_html(url)
+    parsed = None
     if cached:
         parsed = feedparser.parse(cached)
-    else:
+        # If the cache has garbage (HTML error page cached as a feed), discard it
+        if parsed.bozo and not parsed.entries:
+            parsed = None
+    if parsed is None:
         try:
             resp = httpx.get(url, follow_redirects=True, timeout=15)
             resp.raise_for_status()
@@ -300,7 +304,10 @@ def _discover_feed_url(site_url: str) -> Optional[str]:
 def _download_xml(url: str) -> Optional[str]:
     cached = get_cached_html(url)
     if cached:
-        return cached
+        stripped = cached.lstrip()
+        # Reject cached HTML error pages — only accept XML
+        if stripped.startswith("<") and not stripped.lower().startswith("<html"):
+            return cached
     try:
         resp = httpx.get(url, follow_redirects=True, timeout=15)
         resp.raise_for_status()
@@ -427,14 +434,15 @@ def parse_feed(feed_url: str, max_posts: int = 250) -> Optional[FeedInfo]:
                 if len(combined) >= max_posts:
                     break
 
-        if len(combined) > len(posts):
-            feed = parsed.feed
-            return FeedInfo(
-                title=feed.get("title", ""),
-                description=feed.get("subtitle", ""),
-                site_url=feed.get("link", ""),
-                posts=combined[:max_posts],
-            )
+        # Always return Wix results — even if enrichment found nothing new,
+        # the RSS 20 posts are more reliable than _paginate_feed on a non-feed URL.
+        feed = parsed.feed
+        return FeedInfo(
+            title=feed.get("title", ""),
+            description=feed.get("subtitle", ""),
+            site_url=feed.get("link", ""),
+            posts=combined[:max_posts],
+        )
 
     # Try to paginate for more posts
     return _paginate_feed(feed_url, max_posts=max_posts)

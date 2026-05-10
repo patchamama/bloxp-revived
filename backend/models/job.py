@@ -23,6 +23,8 @@ class JobState(BaseModel):
     posts_found: int = 0
     posts_crawled: int = 0
     posts_cached: int = 0
+    posts_skipped: int = 0
+    skipped_urls: list[str] = []
     images_found: int = 0
     images_embedded: int = 0
     images_cached: int = 0
@@ -43,6 +45,8 @@ class JobStatusResponse(BaseModel):
     posts_found: int
     posts_crawled: int
     posts_cached: int = 0
+    posts_skipped: int = 0
+    skipped_urls: list[str] = []
     images_found: int = 0
     images_embedded: int = 0
     images_cached: int = 0

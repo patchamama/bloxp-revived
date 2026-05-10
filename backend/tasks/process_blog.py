@@ -451,7 +451,7 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
             state.progress = 10 + int(crawled / max(total, 1) * 60)
             _save_state(state)
 
-        posts = asyncio.run(
+        posts, failed_urls = asyncio.run(
                 crawl_from_feed(
                     feed_post_items,
                     max_posts=len(feed_post_items),
@@ -459,6 +459,9 @@ def process_basic(self, job_id: str, payload: dict[str, Any]) -> None:
                     include_images=req.include_images,
                 )
         )
+        state.posts_skipped = len(failed_urls)
+        state.skipped_urls = failed_urls
+        _save_state(state)
 
         _generate_ebooks(state, posts, feed.title, feed.description, req.add_toc, req.links_to_footnotes, req.include_images)
 

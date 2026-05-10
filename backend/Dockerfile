@@ -11,6 +11,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatk-bridge2.0-0 \
     libatspi2.0-0 \
     libffi-dev \
+    libnss3 \
+    libnspr4 \
+    libdbus-1-3 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libdrm2 \
+    libxkbcommon0 \
+    libasound2 \
+    libx11-6 \
+    libxext6 \
+    libcups2 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

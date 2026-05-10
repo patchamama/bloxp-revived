@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# stop.sh — Stop all Bloxp Revived local services
+# stop-local.sh — Stop all Bloxp Revived local services
 # =============================================================================
 
 set -euo pipefail

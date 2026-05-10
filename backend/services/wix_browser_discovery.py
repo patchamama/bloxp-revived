@@ -35,6 +35,7 @@ async def _discover_async(site_url: str, max_posts: int = 250) -> list[tuple[str
 
         collected_from_api: list[tuple[str, str]] = []
         seen_api_urls: set[str] = set()
+        seen_slugs: set[str] = set()
 
         def _to_url_candidates(value) -> list[str]:
             if isinstance(value, str):
@@ -97,14 +98,20 @@ async def _discover_async(site_url: str, max_posts: int = 250) -> list[tuple[str
                         break
 
                 if picked and picked not in seen_api_urls:
-                    seen_api_urls.add(picked)
-                    title = (
-                        str(node.get("title", "")).strip()
-                        or str(node.get("seoTitle", "")).strip()
-                        or str(node.get("postTitle", "")).strip()
-                        or _title_from_url(picked)
-                    )
-                    collected_from_api.append((picked, title))
+                    # Dedup by slug: treat /post/X and /blog/post/X as the same post
+                    slug_key = urlparse(picked).path.rstrip("/").split("/")[-1]
+                    if slug_key in seen_slugs:
+                        pass
+                    else:
+                        seen_api_urls.add(picked)
+                        seen_slugs.add(slug_key)
+                        title = (
+                            str(node.get("title", "")).strip()
+                            or str(node.get("seoTitle", "")).strip()
+                            or str(node.get("postTitle", "")).strip()
+                            or _title_from_url(picked)
+                        )
+                        collected_from_api.append((picked, title))
 
                 for v in node.values():
                     if isinstance(v, (dict, list)):
@@ -117,26 +124,39 @@ async def _discover_async(site_url: str, max_posts: int = 250) -> list[tuple[str
         await page.wait_for_timeout(5000)
 
         stable_rounds = 0
-        last_count = 0
+        last_api_count = 0
         max_scrolls = 140
 
         for _ in range(max_scrolls):
-            urls = await page.eval_on_selector_all(
-                "a[href]",
-                "els => els.map(a => a.getAttribute('href') || '').filter(Boolean)",
-            )
-            current_count = len(urls)
-            if current_count <= last_count:
+            if len(collected_from_api) >= max_posts:
+                break
+
+            # Scroll to absolute bottom to reliably trigger Wix infinite scroll / pagination
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await page.wait_for_timeout(900)
+
+            # Also try clicking any visible "Load More" button
+            try:
+                btn = await page.query_selector(
+                    "button:has-text('Load more'), button:has-text('Show more'), "
+                    "button:has-text('Ver más'), button:has-text('Cargar más')"
+                )
+                if btn and await btn.is_visible():
+                    await btn.click()
+                    await page.wait_for_timeout(1500)
+            except Exception:
+                pass
+
+            # Stability tracked on API count, not DOM link count
+            current_api_count = len(collected_from_api)
+            if current_api_count <= last_api_count:
                 stable_rounds += 1
             else:
                 stable_rounds = 0
-                last_count = current_count
+                last_api_count = current_api_count
 
             if stable_rounds >= 8:
                 break
-
-            await page.evaluate("window.scrollBy(0, Math.floor(window.innerHeight * 1.4))")
-            await page.wait_for_timeout(900)
 
         hrefs = await page.eval_on_selector_all(
             "a[href]",
@@ -144,7 +164,8 @@ async def _discover_async(site_url: str, max_posts: int = 250) -> list[tuple[str
         )
         await browser.close()
 
-    if len(collected_from_api) > 20:
+    # Use API results if we got any — API is more reliable than DOM scraping
+    if collected_from_api:
         return collected_from_api[:max_posts]
 
     out: list[tuple[str, str]] = []

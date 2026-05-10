@@ -17,6 +17,8 @@ export interface JobStatusResponse {
   posts_found: number
   posts_crawled: number
   posts_cached: number
+  posts_skipped: number
+  skipped_urls: string[]
   error_message?: string
   has_epub: boolean
   has_mobi: boolean
